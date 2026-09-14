@@ -138,13 +138,47 @@ scheduler; the port models them directly.
 
 ```
 platforms/<vendor>/__init__.py    NAME = "<vendor>"; GRANULARITY = "layer" | "step"
-platforms/<vendor>/profile.py     ENGINE_KWARGS, TP_EMULATION, device_info(), measure(), step_grid()
+platforms/<vendor>/profile.py     PROFILE = <Vendor>Profile(), a PlatformProfile subclass
 platforms/<vendor>/simulator.py   scheduler_class()
 ```
 
-`profile.py` may import vLLM and torch; `simulator.py` may import
-`serving`. Neither is imported until the profiler or the simulator asks
-for it. To ship the platform inside a vLLM plugin package, give it the
+The profiler side is one interface, `platforms.profile.PlatformProfile`.
+Its defaults are CUDA vLLM's, so a subclass overrides only what differs:
+
+| Member | Default | Override when |
+| --- | --- | --- |
+| `ENGINE_KWARGS` | `{}` | The platform needs engine kwargs of its own, merged under the CLI's |
+| `TP_EMULATION` | `True` | TP cannot be emulated on one device, because the collectives are inside what is timed |
+| `scheduler_output_cls()` | vLLM's `SchedulerOutput` | The model runner reads a subclass of it |
+| `device_info()` | `{"gpu": "unknown"}` | Always: it identifies the device in `meta.yaml` |
+| `measure(run_forward, iterations, catalog_slice)` | abstract | Always: how a shot is timed |
+| `step_grid(args, limits)` | raises | The platform is step-granularity, where it is required |
+
+A minimal step-granularity platform:
+
+```python
+from platforms.profile import PlatformProfile
+
+class AcmeProfile(PlatformProfile):
+    TP_EMULATION = False
+
+    def device_info(self):
+        return {"gpu": acme.device_name(0)}
+
+    def measure(self, run_forward, iterations, catalog_slice):
+        ...  # time run_forward() and return one TimingSample("step", ...) dict
+
+    def step_grid(self, args, limits):
+        ...  # yield the Shots the runner can actually execute
+
+PROFILE = AcmeProfile()
+```
+
+The loader refuses a `PROFILE` that is not a `PlatformProfile`, and a
+step-granularity platform whose class leaves `step_grid` at the default.
+`profile.py` may import vLLM and torch inside its methods; `simulator.py`
+may import `serving`. Neither is imported until the profiler or the
+simulator asks for it, and the base class imports nothing heavy. To ship the platform inside a vLLM plugin package, give it the
 same three modules and register it:
 
 ```toml

@@ -38,6 +38,7 @@ LLMServingSim/
 │   └── validate-baselines.txt  # the recorded values; refresh with validate.sh --update
 ├── platforms/                  # Platform plugins: how a vLLM hardware platform differs from CUDA
 │   ├── __init__.py             # load_platform(): --platform, meta.yaml::platform, entry points, cuda
+│   ├── profile.py              # PlatformProfile: the profiler-side interface, CUDA defaults
 │   ├── cuda/                   # NAME/GRANULARITY, profile.py (layerwise_profile), simulator.py (port)
 │   └── rbln/                   # step granularity, profile.py (wall-clock step grid), simulator.py (RBLNScheduler)
 ├── configs/
@@ -126,12 +127,20 @@ the simulator's counterpart: one package per vendor with `NAME`,
 `GRANULARITY` and two submodules imported on demand, so the profiler side
 (needs vLLM + torch) never loads in the simulator container and vice versa:
 
-- `profile.py`: `ENGINE_KWARGS` merged over `HOST_ENGINE_DEFAULTS`,
-  `TP_EMULATION` (cuda: shrink `SHARD_FIELDS` on one GPU; rbln: boot real
-  ranks, the collectives are inside the compiled graph), `device_info()` for
-  meta.yaml, `measure(run_forward, iterations, catalog_slice)` (cuda:
-  `layerwise_profile`; rbln: wall-clock between device syncs) and, at step
-  granularity, `step_grid(args, limits)`.
+- `profile.py`: `PROFILE`, an instance of a subclass of
+  `platforms/profile.py::PlatformProfile`. The base class holds the CUDA
+  defaults, so a platform overrides only what differs: `ENGINE_KWARGS`
+  merged over `HOST_ENGINE_DEFAULTS` (default `{}`), `TP_EMULATION` (default
+  `True`: shrink `SHARD_FIELDS` on one GPU; rbln `False`: boot real ranks, the
+  collectives are inside the compiled graph), `scheduler_output_cls()`
+  (default vLLM's `SchedulerOutput`; rbln `RBLNSchedulerOutput`),
+  `device_info()` for meta.yaml, `measure(run_forward, iterations,
+  catalog_slice)` (abstract; cuda `layerwise_profile`, rbln wall-clock between
+  device syncs) and `step_grid(args, limits)` (raises by default). `Platform.profile`
+  refuses a `PROFILE` that is not a `PlatformProfile`, and a step-granularity
+  platform whose class does not override `step_grid`. The base class imports
+  nothing heavy at module scope, so `platforms` still loads in the simulator
+  container. `python -m platforms.profile` checks both built-ins.
 - `simulator.py`: `scheduler_class()`. cuda returns the in-tree port
   (`serving/core/scheduler.py`); rbln returns `RBLNVllmScheduler`, a
   `serving/core/vllm_scheduler.py::VllmScheduler` pinned to
@@ -781,6 +790,8 @@ equality against recorded results:
    and run `./profiler/profile.sh` from the repo root inside the vLLM container.
 4. `python -m serving.core.vllm_scheduler` checks the vLLM-driven scheduler
    against the port (needs vLLM importable, no ASTRA-Sim).
+5. `python -m platforms.profile` checks that every built-in platform exposes a
+   `PlatformProfile` and that the loader refuses a step platform with no grid.
 
 A scenario whose clock equals an existing one exercises flag parsing and
 nothing else. Several knobs only bite once the KV cache is saturated, which is
