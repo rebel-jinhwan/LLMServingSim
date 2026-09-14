@@ -23,6 +23,7 @@ from serving.core.graph_generator import *
 from serving.core.trace_generator import *
 from serving.core.pim_model import *
 from serving.core.config_builder import *
+from platforms import load_platform
 from serving.core.router import *
 from serving.core.power_model import *
 from serving.core.logger import *
@@ -369,6 +370,15 @@ def main():
                         help='KV cache data type: auto (inherit --dtype) or fp8. Selects the profile '
                         'variant folder -- fp8 resolves to <dtype>-kvfp8, e.g. bf16-kvfp8 -- and '
                         'halves KV cache memory. Override per instance with "kv_cache_dtype"')
+    parser.add_argument('--platform', type=str, default=None,
+                        help='Platform plugin (cuda, rbln, or an installed llmservingsim.platforms '
+                             'entry point). Default: the platform recorded in each instance\'s '
+                             'perf bundle meta.yaml, else cuda. Picks the scheduler; the trace shape '
+                             'follows the bundle either way.')
+    parser.add_argument('--scheduler', type=str, choices=['platform', 'vllm'], default='platform',
+                        help='platform: the scheduler the platform names (cuda: the in-tree port; rbln: '
+                             'vllm-rbln\'s RBLNScheduler). vllm: drive the installed vLLM\'s own scheduler '
+                             'through serving.core.vllm_scheduler regardless of platform (needs vLLM importable).')
     parser.add_argument('--network-backend', type=str, choices=['analytical', 'ns3'], default='analytical',
                         help='network simulation backend: analytical (fast, default) or ns3 (detailed, WIP)')
 
@@ -525,7 +535,17 @@ def main():
 
         inst_cfg = instance_runtime_configs[instance_id]
 
-        schedulers.append(Scheduler(
+        # The bundle names the platform it was profiled on, so the scheduler
+        # follows the data: a step-granularity RBLN bundle gets vllm-rbln's
+        # no-mixed-batching scheduler without a flag.
+        platform = load_platform(args.platform, load_bundle_meta(
+            instance["hardware"], instance["model_name"],
+            inst_cfg["dtype"], inst_cfg["kv_cache_dtype"]))
+        scheduler_cls = platform.simulator.scheduler_class()
+        if args.scheduler == 'vllm':
+            from serving.core.vllm_scheduler import VllmScheduler
+            scheduler_cls = VllmScheduler
+        schedulers.append(scheduler_cls(
             instance["model_name"], instance["node_id"], instance_id,
             inst_cfg["max_num_seqs"], inst_cfg["max_num_batched_tokens"],
             instance["num_npus"], instance["tp_size"], instance["pp_size"],

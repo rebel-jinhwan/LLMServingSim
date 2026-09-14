@@ -22,12 +22,15 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import ClassVar, Iterator
+from typing import TYPE_CHECKING, ClassVar, Iterator
 
 from profiler.core.config import Architecture, LayerEntry, ProfileArgs
 from profiler.core.engine import RuntimeLimits
 from profiler.core.hooks.batch import Shot
 from profiler.core.hooks.timings import TimingSample
+
+if TYPE_CHECKING:
+    from platforms import Platform
 
 
 # ---------------------------------------------------------------------------
@@ -530,10 +533,32 @@ class ExpertCategory(Category):
 # Category registry
 # ---------------------------------------------------------------------------
 
-def categories_for(arch: Architecture, tp: int) -> list[Category]:
+class StepCategory(AttentionCategory):
+    """One row per padded forward for a step-granularity platform.
+
+    Same 4D key and CSV shape as attention, but the time is the whole
+    step (embedding to sampler, collectives included) and the grid is
+    the platform's: exactly the shapes its runner can produce.
+    """
+
+    name = "step"
+    sink_filename = "step.csv"
+    label = "step"
+
+    def compose_shots(self, arch, args, limits, tp):
+        from platforms import load_platform
+        yield from load_platform(args.platform).profile.step_grid(args, limits)
+
+    def catalog_slice(self, arch):
+        # Nothing to match against: the platform's measure() returns a
+        # single "step" sample. Non-empty so run_slice accepts the group.
+        return {"step": {"vllm": "*"}}
+
+
+def categories_for(arch: Architecture, tp: int, platform: "Platform | None" = None) -> list[Category]:
     """Return the list of categories that should run for this (arch, tp).
 
-    Excludes:
+    A step-granularity platform runs only StepCategory. Otherwise excludes:
       * Any category whose catalog slice is empty (e.g., ExpertCategory
         for a dense model).
       * ExpertCategory for tp != 1 (MoE is profiled once at tp=1;
@@ -541,6 +566,8 @@ def categories_for(arch: Architecture, tp: int) -> list[Category]:
       * Any category for which every matching layer is tp_stable AND
         tp != 1 (replicate_tp_stable will fill it in from tp=1).
     """
+    if platform is not None and platform.granularity == "step":
+        return [StepCategory()]
     result: list[Category] = []
     registry = [
         (DenseCategory(), arch.catalog.dense),
@@ -565,4 +592,5 @@ CATEGORY_BY_NAME: dict[str, type[Category]] = {
     SequenceCategory.name: SequenceCategory,
     AttentionCategory.name: AttentionCategory,
     ExpertCategory.name: ExpertCategory,
+    StepCategory.name: StepCategory,
 }

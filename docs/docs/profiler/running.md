@@ -170,6 +170,7 @@ file is an error.
 | Flag | Default | `profile.sh` variable |
 | --- | --- | --- |
 | `--hardware` | **required** | `HARDWARE` |
+| `--platform` | `cuda` | — (`cuda`, `rbln`, or an installed `llmservingsim.platforms` entry point; see [Platforms](../simulator/platforms)) |
 | `--tp` | `1` | `TP_DEGREES` |
 | `--variant` | auto-derived from dtypes | `VARIANT` |
 | `--dtype` | vLLM default (model's `torch_dtype`) | `DTYPE` |

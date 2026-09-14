@@ -6,6 +6,26 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
 ## [Unreleased]
 
 ### Added
+- `platforms/` — platform plugins, the simulator's counterpart to vLLM's out-of-tree
+  platform plugins. One package per vendor with `profile.py` (how a shot is measured,
+  whether TP is emulated on one device) and `simulator.py` (which scheduler runs),
+  resolved by `--platform`, by the `platform` key the profiler now writes to
+  `meta.yaml`, or by an installed `llmservingsim.platforms` entry point. `cuda` is the
+  existing behaviour. `rbln` (Rebellions NPUs through vllm-rbln) profiles at **step
+  granularity** — one wall-clock time per padded forward into `tp<N>/step.csv`, TP on
+  real ranks with the collectives inside the measured time — and the trace generator
+  emits one `step` row per iteration, snapping a batch to the profiled prefill chunk and
+  decode bucket before the kv-axis interpolation.
+- `serving/core/vllm_scheduler.py` — `VllmScheduler` drives vLLM's own scheduler classes
+  the way `EngineCore` does on the host (`EngineArgs.create_engine_config()`,
+  `get_scheduler_cls()`, a `KVCacheConfig` sized from the memory model, then
+  `schedule()` / `update_from_output()` around the simulated forward). The `rbln`
+  platform pins it to vllm-rbln's `RBLNScheduler`, so that plugin's scheduling runs
+  verbatim; `--scheduler vllm` selects it for any platform. Against the in-tree port on
+  the same ShareGPT requests the batches are identical while nothing is preempted, and
+  differ under KV pressure only by vLLM's reserved null block (`python -m
+  serving.core.vllm_scheduler`). Needs vLLM importable in the simulator container; P/D
+  and `--prefix-storage` (KV connectors in vLLM) stay with the port.
 - `docs/scripts/check-rendered.mjs` — scans the built site for source syntax that
   survived into visible text (unparsed admonitions, bold, links, headings, table rows,
   doubled list markers, visible HTML comments, JSX brace leaks), plus a structural
