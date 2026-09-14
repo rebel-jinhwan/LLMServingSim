@@ -563,18 +563,21 @@ class StepCategory(AttentionCategory):
     def extract_points_all_ranks(self, shot, per_rank_us, tp):
         """One StepPoint per pipeline stage from every worker's wall-clock.
 
-        vLLM lays ranks out pp-major (``rank = stage * tp + tp_rank``). A
-        stage's execute_model blocks on the stage before it, so a worker's
-        time is cumulative up to its stage; the per-stage cost is the
-        difference between consecutive stage maxima.
+        The longest per-rank time is taken as the forward's latency and
+        split evenly across the stages, since vLLM's ``get_pp_indices``
+        splits the transformer blocks evenly. Known to be unreliable at
+        pp > 1: the ranks block on one another's sends and receives inside
+        the timed loop, and on MiniMax-M2.5 pp4 this gave a prefill 4x
+        longer and a decode 4x shorter than vLLM's own TTFT and TPOT (see
+        bench/examples/RBLN-CR03/MiniMax-M2.5-pp4/NOTE.md). A pp profile
+        needs the latency of one forward through the whole pipeline timed
+        from the host; until then treat pp > 1 bundles as indicative only.
         """
         pc, kp, nd, kd = self.shot_key(shot)
         num_stages = max(1, len(per_rank_us) // max(1, tp))
-        stage_max = [max(per_rank_us[s * tp:(s + 1) * tp]) for s in range(num_stages)]
-        prev = 0.0
-        for stage, cum in enumerate(stage_max):
-            yield StepPoint(stage, pc, kp, nd, kd, max(cum - prev, 1.0))
-            prev = max(prev, cum)
+        total = max(per_rank_us)
+        for stage in range(num_stages):
+            yield StepPoint(stage, pc, kp, nd, kd, max(total / num_stages, 1.0))
 
     def catalog_slice(self, arch):
         # Nothing to match against: the platform's measure() returns a
