@@ -48,7 +48,7 @@ scripts/                      shared environment / build entry points (top-level
 ./scripts/docker-vllm.sh
 ```
 
-The official vLLM image (`vllm/vllm-openai:v0.19.0`, or `:v0.19.0-cu130`
+The official vLLM image (`vllm/vllm-openai:v0.24.0`, or `:v0.24.0-cu130`
 for CUDA 13.x GPUs — edit `scripts/docker-vllm.sh`) already includes every
 dependency the profiler needs: vllm, pydantic, pyyaml, rich,
 huggingface_hub. No extra pip installs.
