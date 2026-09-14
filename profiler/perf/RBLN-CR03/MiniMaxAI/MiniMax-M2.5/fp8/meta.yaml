@@ -1,0 +1,43 @@
+profiler_version: 1.0.0
+vllm_version: 0.26.0
+platform: rbln
+granularity: step
+gpu: RBLN-CR03
+rebel_version: 0.11.3.dev237+g687d3f76
+hardware: RBLN-CR03
+profiled_at: '2026-09-14T14:10:50+00:00'
+architecture: minimax_m2
+architecture_sha256: abac7bb0a605e34c2fd60d351ffce946c1448809f23ad58d4c260428527d8bce
+model: MiniMaxAI/MiniMax-M2.5
+variant: fp8
+tp_degrees: [4]
+engine_effective:
+  load_format: auto
+  enforce_eager: false
+  skip_tokenizer_init: true
+  enable_prefix_caching: false
+  generation_config: vllm
+  tensor_parallel_size: 4
+  block_size: 8192
+  gpu_memory_utilization: 0.9
+  max_num_batched_tokens: 1024
+  max_num_seqs: 4
+  hf_overrides: {}
+  dtype: bfloat16
+  max_model_len: 65536
+  enable_expert_parallel: true
+  num_gpu_blocks_override: 82
+  worker_extension_cls: profiler.core.hooks.extension.Extension
+  model: MiniMaxAI/MiniMax-M2.5
+attention_grid:
+  max_kv: 65536
+  chunk_factor: 2.0
+  kv_factor: 2.0
+  chunks: 0, 16-1024 x2
+  n_decode: 0, 1-4 x2
+  kv: 0, 16-65536 x2
+measurement_iterations: 3
+skew_profile:
+  enabled: false
+skew_fit:
+  enabled: false

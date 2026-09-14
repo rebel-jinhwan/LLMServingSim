@@ -40,6 +40,9 @@ class VllmScheduler(Scheduler):
     _last_scheduler_cls: type | None = None  # what get_scheduler_cls() resolved to, for the self-check
 
     def __init__(self, *args, **kwargs):
+        # The KV dtype vLLM should see: 'auto' follows the activation dtype,
+        # which is not the weight dtype the memory model sizes with.
+        self._kv_cache_dtype = kwargs.get("kv_cache_dtype", "auto")
         super().__init__(*args, **kwargs)
         if self.pd_type is not None:
             raise NotImplementedError(
@@ -80,7 +83,7 @@ class VllmScheduler(Scheduler):
             enforce_eager=True,
             seed=0,
             dtype=dtype.get(self.memory.fp * 8, "bfloat16"),
-            kv_cache_dtype="fp8" if self.memory.kv_fp == 1 else "auto",
+            kv_cache_dtype=self._kv_cache_dtype,
             max_model_len=self.config['max_position_embeddings'],
             max_num_seqs=self.max_num_seqs,
             max_num_batched_tokens=self.max_num_batched_tokens,
@@ -113,7 +116,7 @@ class VllmScheduler(Scheduler):
             block_size=self.memory.block_size,
             num_kv_heads=mc.get_num_kv_heads(pc),
             head_size=mc.get_head_size(),
-            dtype=torch.float8_e4m3fn if self.memory.kv_fp == 1 else mc.dtype,
+            dtype=torch.float8_e4m3fn if self._kv_cache_dtype == "fp8" else mc.dtype,
         )
         layers = [f"layers.{i}" for i in range(mc.get_num_layers(pc))]
         kv_cache_config = KVCacheConfig(
