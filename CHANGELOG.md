@@ -16,6 +16,13 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
   real ranks with the collectives inside the measured time — and the trace generator
   emits one `step` row per iteration, snapping a batch to the profiled prefill chunk and
   decode bucket before the kv-axis interpolation.
+- `bench/examples/RBLN-CR03/` — the first non-CUDA examples, MiniMax-M2.5 on four
+  RBLN-CR03 (tp4 + EP) and gpt-oss-120b on one, from vLLM 0.26 + vllm-rbln runs and
+  step-granularity bundles driven by vllm-rbln's own scheduler. Two calibration knobs,
+  `--step-overhead-us` and `--prefill-step-overhead-us` (per instance in the cluster
+  config), carry the host time a step profile does not measure; raw bundles run 4-30%
+  fast, calibrated ones land within 1% on TTFT, TPOT and latency means. `--engine-kwargs`
+  on the profiler, bench and simulator passes the EngineArgs a deployment pins.
 - `serving/core/vllm_scheduler.py` — `VllmScheduler` drives vLLM's own scheduler classes
   the way `EngineCore` does on the host (`EngineArgs.create_engine_config()`,
   `get_scheduler_cls()`, a `KVCacheConfig` sized from the memory model, then
