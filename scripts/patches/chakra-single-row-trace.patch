@@ -1,0 +1,26 @@
+diff --git a/src/converter/llm_converter.py b/src/converter/llm_converter.py
+index 13655fb..860a445 100644
+--- a/src/converter/llm_converter.py
++++ b/src/converter/llm_converter.py
+@@ -373,7 +373,9 @@ class LLMConverter:
+         evict = None
+         load = None
+         ev_ld_cnt = 0
+-        for i in range(2):
++        # At most two leading rows are kv_load / kv_evict, and a trace may be
++        # a single row (a step-granularity platform).
++        for i in range(min(2, len(layers))):
+             if 'kv_load' in layers[i].name:
+                 load = self.get_memory_load_node(
+                             layers[i].name,
+@@ -714,7 +716,9 @@ class LLMConverter:
+         evict = None
+         load = None
+         ev_ld_cnt = 0
+-        for i in range(2):
++        # At most two leading rows are kv_load / kv_evict, and a trace may be
++        # a single row (a step-granularity platform).
++        for i in range(min(2, len(layers))):
+             if 'kv_load' in layers[i].name:
+                 load = self.get_memory_load_node(
+                             layers[i].name,
