@@ -198,6 +198,16 @@ too, so the run must carry the deployment's environment (for vllm-rbln:
 scheduler) and `--engine-kwargs` carries the knobs without a flag
 (`max_model_len`, ...).
 
+**Calibration knobs for a step bundle.** `--step-overhead-us` (every step)
+and `--prefill-step-overhead-us` (on top, for a step carrying a prefill
+chunk), also per instance in the cluster config, carry the host time the
+profiled `execute_model` does not include; fit them against a bench run
+after `mem_util` is matched to `num_gpu_blocks`. MiniMax-M2.5 tp4ep on
+RBLN-CR03 went from -7.3% / -3.9% (TTFT / TPOT mean) raw to +0.0% / +0.7%
+at 1100 / 9000 us; the example is `bench/examples/RBLN-CR03/MiniMax-M2.5-tp4ep`,
+which needs vLLM + vllm-rbln importable to re-run and is therefore not in
+the default example lists.
+
 **RBLN facts that cost a boot each to learn.** vllm-rbln validates
 `block_size` against its `prefix_block_size` (2048), so the KV block must be
 a multiple of that (the CI perf target runs 8192; the profiler's default 16

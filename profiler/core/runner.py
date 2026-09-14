@@ -127,6 +127,14 @@ def _fire_one_category(
                 args=(shot.as_dict(), catalog_slice, category.name,
                       args.measurement_iterations, args.platform),
             )
+            if hasattr(category, "extract_points_all_ranks"):
+                # A step profile keeps every worker: with pipeline
+                # parallelism each rank is a stage of its own.
+                per_rank_us = [float(d[0]["microseconds"]) for d in raw]
+                for point in category.extract_points_all_ranks(shot, per_rank_us, tp):
+                    sink.coalesce(point)
+                bar.advance(1)
+                continue
             # collective_rpc returns one result per worker (one per
             # TP rank). The timings are identical across ranks; take
             # rank 0's.

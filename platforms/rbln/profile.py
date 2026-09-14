@@ -95,7 +95,9 @@ def step_grid(args: ProfileArgs, limits: RuntimeLimits) -> Iterator[Shot]:
             continue
         yield Shot.attention(prefill_chunk=chunk, kv_prefill=kp, n_decode=0, kv_decode=0)
 
-    for n in decode_buckets(limits.max_num_seqs):
+    # The runner buckets the per-stage decode batch, max_num_seqs // pp.
+    pp = int((args.engine_kwargs or {}).get("pipeline_parallel_size", 1))
+    for n in decode_buckets(max(1, limits.max_num_seqs // pp)):
         for kd in kv_vals:
             if kd == 0 or 1 + kd + 1 > limits.max_model_len:
                 continue
