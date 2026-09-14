@@ -378,6 +378,11 @@ class ProfileArgs:
     """CLI-specified hf_overrides applied on top of the model config
     at vLLM load time."""
 
+    engine_kwargs: dict[str, Any] | None = None
+    """Extra ``vllm.LLM`` kwargs from ``--engine-kwargs``, merged last: the
+    knobs a deployment pins that have no flag of their own (block_size,
+    max_model_len, enable_expert_parallel, num_gpu_blocks_override, ...)."""
+
     model_config: dict[str, Any] | None = None
     """Full parsed ``configs/model/<path>.json`` — the source of
     truth for the model's shape. At profile time the engine writes

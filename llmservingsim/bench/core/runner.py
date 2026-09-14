@@ -66,6 +66,9 @@ def register_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--kv-cache-dtype", default="auto",
                    dest="kv_cache_dtype",
                    help="vLLM kv_cache_dtype.")
+    p.add_argument("--engine-kwargs", default=None,
+                   help="JSON object of extra AsyncEngineArgs fields, for knobs without a "
+                        "flag of their own (block_size, num_gpu_blocks_override, ...).")
     p.add_argument("--seed", type=int, default=42,
                    help="Sampling seed for vLLM.")
     p.add_argument("--tick-seconds", type=float, default=1.0,
@@ -158,6 +161,7 @@ async def _drive(args: argparse.Namespace, requests: list[dict], output_dir: Pat
         kv_cache_dtype=args.kv_cache_dtype,
         seed=args.seed,
         disable_log_stats=False,
+        **(json.loads(args.engine_kwargs) if args.engine_kwargs else {}),
     )
     engine_kwargs_for_meta = _engine_kwargs_for_meta(engine_args)
 
@@ -425,6 +429,13 @@ def _hardware_facts() -> dict:
             props = torch.cuda.get_device_properties(0)
             facts["device_total_memory_bytes"] = props.total_memory
             facts["device_capability"] = f"{props.major}.{props.minor}"
+        else:
+            try:
+                import rebel  # Rebellions NPU through vllm-rbln
+                facts["device_name"] = rebel.get_npu_name(0)
+                facts["rebel_version"] = getattr(rebel, "__version__", None)
+            except ImportError:
+                pass
     except Exception as exc:
         facts["error"] = f"{type(exc).__name__}: {exc}"
     return facts

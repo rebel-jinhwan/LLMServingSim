@@ -18,6 +18,11 @@ ENGINE_KWARGS: dict = {}
 TP_EMULATION = True
 
 
+def scheduler_output_cls():
+    from vllm.v1.core.sched.output import SchedulerOutput
+    return SchedulerOutput
+
+
 def device_info() -> dict:
     out = {"gpu": "unknown", "cuda_version": "unknown"}
     try:

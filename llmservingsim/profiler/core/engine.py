@@ -63,6 +63,7 @@ class RuntimeLimits:
     max_model_len: int
     num_experts: int | None = None
     top_k: int | None = None
+    block_size: int = 16
 
 
 # ---------------------------------------------------------------------------
@@ -104,6 +105,8 @@ def _profile_engine_overrides(args: ProfileArgs) -> dict[str, Any]:
         out["max_num_seqs"] = args.max_num_seqs
     if args.hf_overrides is not None:
         out["hf_overrides"] = args.hf_overrides
+    if args.engine_kwargs:
+        out.update(args.engine_kwargs)
     return out
 
 
@@ -252,7 +255,10 @@ def spin_up(
     config_path.write_text(json.dumps(args.model_config, indent=2))
     log.debug("model config written to %s", config_path)
 
-    kwargs["model"] = str(tmpdir)
+    # A platform that loads the real checkpoint (see its ENGINE_KWARGS) has
+    # to be pointed at the model itself; the config-only directory is for
+    # the dummy loader.
+    kwargs["model"] = args.model if kwargs.get("load_format") != "dummy" else str(tmpdir)
 
     with log.capture_stdio():
         llm = LLM(**kwargs)
@@ -296,6 +302,7 @@ def probe_limits(llm: LLM, bumped: bool = True) -> RuntimeLimits:
         max_model_len=cfg.model_config.max_model_len,
         num_experts=num_experts,
         top_k=top_k,
+        block_size=block_size,
     )
 
 

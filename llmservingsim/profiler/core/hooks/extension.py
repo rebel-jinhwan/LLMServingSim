@@ -68,14 +68,18 @@ class Extension:
         Returns:
             List of ``TimingSample`` as plain dicts (pickled back to host).
         """
+        from platforms import load_platform
+
         shot = Shot.hydrate(shot_dict)
         iterations = max(1, int(iterations))
+        profile = load_platform(platform).profile
 
         def _fresh_batch():
             # Rebuild the synthetic SchedulerOutput on every forward so
             # prior-iteration KV writes / request state don't bleed into
             # the next measurement.
-            batch, _ = assemble_scheduler_output(shot, self.model_runner)
+            batch, _ = assemble_scheduler_output(
+                shot, self.model_runner, profile.scheduler_output_cls())
             return batch
 
         # -- warm-up run, result discarded -----------------------------
@@ -114,8 +118,5 @@ class Extension:
             if measured_out is None:
                 self.model_runner.sample_tokens(None)
 
-        from platforms import load_platform
-
         with force_moe_routing(route):
-            return load_platform(platform).profile.measure(
-                _run_forward, iterations, slice_)
+            return profile.measure(_run_forward, iterations, slice_)
