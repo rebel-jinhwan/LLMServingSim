@@ -37,6 +37,7 @@ class VllmScheduler(Scheduler):
     # Extra EngineArgs a platform pins, e.g. its scheduler_cls. A subclass in
     # platforms/<vendor>/simulator.py sets this.
     ENGINE_ARGS: dict[str, Any] = {}
+    _last_scheduler_cls: type | None = None  # what get_scheduler_cls() resolved to, for the self-check
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -123,6 +124,7 @@ class VllmScheduler(Scheduler):
 
         # EngineCore.__init__, minus the executor.
         scheduler_cls = cfg.scheduler_config.get_scheduler_cls()
+        VllmScheduler._last_scheduler_cls = scheduler_cls
         self._block_hasher = None
         if cfg.cache_config.enable_prefix_caching:
             from vllm.utils.hashing import get_hash_fn_by_name
@@ -404,10 +406,20 @@ def _selfcheck():
             f"port={port[first][:4] if first is not None else None} "
             f"vllm={vllm[first][:4] if first is not None else None}")
 
+    from vllm.v1.core.sched.scheduler import Scheduler as UpstreamScheduler
+
     for mem_util, prefix in ((0.9, False), (0.9, True), (0.7, False), (0.7, True)):
         label = f"mem_util={mem_util} prefix_caching={prefix}"
         port, p_pre = run(Scheduler, mem_util, prefix)
         vllm, v_pre = run(VllmScheduler, mem_util, prefix)
+        installed = VllmScheduler._last_scheduler_cls
+        if installed is not UpstreamScheduler:
+            # A vLLM platform plugin is active and installed its own
+            # scheduler; the port mirrors upstream, so no equality holds.
+            print(f"note: {label}: {installed.__module__}.{installed.__name__} ran "
+                  f"({len(vllm)} steps, {v_pre} preemptions) vs the port's {len(port)} "
+                  f"steps; equality is only expected against upstream vLLM")
+            continue
         if p_pre == 0:
             same(port, vllm, label)
             print(f"ok: {label}: {len(port)} identical steps, no preemption")

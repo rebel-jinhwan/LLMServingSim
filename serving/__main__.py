@@ -379,6 +379,10 @@ def main():
                         help='platform: the scheduler the platform names (cuda: the in-tree port; rbln: '
                              'vllm-rbln\'s RBLNScheduler). vllm: drive the installed vLLM\'s own scheduler '
                              'through serving.core.vllm_scheduler regardless of platform (needs vLLM importable).')
+    parser.add_argument('--engine-kwargs', type=str, default=None,
+                        help='JSON object of extra vLLM EngineArgs for the vLLM-driven scheduler '
+                             '(--scheduler vllm or the rbln platform), e.g. \'{"max_model_len": 65536}\'. '
+                             'Ignored by the in-tree scheduler.')
     parser.add_argument('--network-backend', type=str, choices=['analytical', 'ns3'], default='analytical',
                         help='network simulation backend: analytical (fast, default) or ns3 (detailed, WIP)')
 
@@ -545,6 +549,12 @@ def main():
         if args.scheduler == 'vllm':
             from serving.core.vllm_scheduler import VllmScheduler
             scheduler_cls = VllmScheduler
+        if args.engine_kwargs:
+            from serving.core.vllm_scheduler import VllmScheduler
+            if not issubclass(scheduler_cls, VllmScheduler):
+                raise ValueError("--engine-kwargs only applies to the vLLM-driven scheduler")
+            scheduler_cls = type(scheduler_cls.__name__, (scheduler_cls,), {
+                "ENGINE_ARGS": {**scheduler_cls.ENGINE_ARGS, **json.loads(args.engine_kwargs)}})
         schedulers.append(scheduler_cls(
             instance["model_name"], instance["node_id"], instance_id,
             inst_cfg["max_num_seqs"], inst_cfg["max_num_batched_tokens"],

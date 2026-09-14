@@ -22,12 +22,21 @@ if TYPE_CHECKING:
     from profiler.core.engine import RuntimeLimits
 
 # Merged over profiler.core.config.HOST_ENGINE_DEFAULTS. enforce_eager would
-# bypass the compiled graph that is being measured.
-ENGINE_KWARGS: dict = {"enforce_eager": False}
+# bypass the compiled graph that is being measured, and vLLM's dummy loader
+# draws its random weights with a torch Generator on the model's device,
+# which torch-rbln does not provide ("Expected a 'cpu' device type for
+# generator but found 'rbln'"), so the real checkpoint is loaded.
+ENGINE_KWARGS: dict = {"enforce_eager": False, "load_format": "auto"}
 
 # The collectives are inside the compiled graph, so tp<N> is measured on N
 # real ranks; there is nothing for ASTRA-Sim to add.
 TP_EMULATION = False
+
+
+def scheduler_output_cls():
+    # The RBLN runner reads kv_cache_copy_ops off every step.
+    from vllm_rbln.v1.core.rbln_scheduler import RBLNSchedulerOutput
+    return RBLNSchedulerOutput
 
 
 def device_info() -> dict:
@@ -69,12 +78,11 @@ def step_grid(args: ProfileArgs, limits: RuntimeLimits) -> Iterator[Shot]:
     """Shots for step.csv: lone prefills at the padded chunk over the
     kv_prefill axis, and decode batches at each bucket over the kv_decode
     axis. Never mixed, matching the scheduler."""
-    from profiler.core.categories import (
-        _ATTN_KV_START, _BLOCK_SIZE, _geometric_grid,
-    )
+    from profiler.core.categories import _ATTN_KV_START, _geometric_grid
 
     def aligned(n: int) -> int:
-        return -(-n // _BLOCK_SIZE) * _BLOCK_SIZE
+        # A request holds whole blocks; vllm-rbln deployments run large ones.
+        return -(-n // limits.block_size) * limits.block_size
 
     kv_cap = min(args.attention_max_kv, limits.max_model_len)
     kv_vals = _geometric_grid(kv_cap, _ATTN_KV_START, factor=args.attention_kv_factor)

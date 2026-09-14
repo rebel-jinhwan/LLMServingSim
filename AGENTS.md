@@ -191,7 +191,26 @@ pressure vLLM's `BlockPool` keeps block 0 as the null block, so it has one
 usable block fewer and preempts one step earlier, and with that block
 returned the runs are identical. Not modelled by it: P/D and
 `--prefix-storage`, which are KV connectors in vLLM and sit below the
-scheduler; the port models them directly.
+scheduler; the port models them directly. When a vLLM platform plugin is
+installed in the simulator environment its `check_and_update_config` runs
+too, so the run must carry the deployment's environment (for vllm-rbln:
+`VLLM_RBLN_USE_VLLM_MODEL=1`, else the plugin installs its optimum-path
+scheduler) and `--engine-kwargs` carries the knobs without a flag
+(`max_model_len`, ...).
+
+**RBLN facts that cost a boot each to learn.** vllm-rbln validates
+`block_size` against its `prefix_block_size` (2048), so the KV block must be
+a multiple of that (the CI perf target runs 8192; the profiler's default 16
+fails to compile with `tMM: Invalid output channel shape`). `kv_cache_dtype=fp8`
+needs the in-memory attention kernel, i.e. RBLN-CR13; CR03 runs a bf16 KV
+cache. vLLM's dummy weight loader draws from a torch Generator on the model
+device, which torch-rbln lacks, so the rbln platform's `ENGINE_KWARGS` load
+the real checkpoint and the profiler points vLLM at the model itself rather
+than the config-only tmpdir. A run needs the deployment's environment:
+`VLLM_RBLN_USE_VLLM_MODEL=1 VLLM_RBLN_DISABLE_OFFLOAD=1
+VLLM_ENGINE_READY_TIMEOUT_S=3600` and `RBLN_VISIBLE_DEVICES` for the
+ranks; `--engine-kwargs` carries `block_size`, `max_model_len`,
+`enable_expert_parallel`, `num_gpu_blocks_override`.
 
 ### Profiler (`profiler/`)
 The profiler uses vLLM's built-in `layerwise_profile()` via a worker extension class to

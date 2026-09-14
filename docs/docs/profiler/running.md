@@ -171,6 +171,7 @@ file is an error.
 | --- | --- | --- |
 | `--hardware` | **required** | `HARDWARE` |
 | `--platform` | `cuda` | — (`cuda`, `rbln`, or an installed `llmservingsim.platforms` entry point; see [Platforms](../simulator/platforms)) |
+| `--engine-kwargs` | none | — (JSON object of extra `vllm.LLM` kwargs merged last, for knobs without a flag: `block_size`, `max_model_len`, `enable_expert_parallel`, `num_gpu_blocks_override`) |
 | `--tp` | `1` | `TP_DEGREES` |
 | `--variant` | auto-derived from dtypes | `VARIANT` |
 | `--dtype` | vLLM default (model's `torch_dtype`) | `DTYPE` |
