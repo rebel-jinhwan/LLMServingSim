@@ -7,7 +7,8 @@ profiler side (which needs vLLM and torch) never loads in the simulator
 container and vice versa:
 
     platforms/<vendor>/__init__.py   NAME, GRANULARITY
-    platforms/<vendor>/profile.py    how a shot is measured on this device
+    platforms/<vendor>/profile.py    PROFILE, a platforms.profile.PlatformProfile
+                                     subclass instance: how a shot is measured
     platforms/<vendor>/simulator.py  which Scheduler the simulator runs
 
 ``GRANULARITY`` is ``"layer"`` (per-kernel timings, the CUDA default: the
@@ -29,7 +30,10 @@ from __future__ import annotations
 import importlib
 from importlib.metadata import entry_points
 from types import ModuleType
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping
+
+if TYPE_CHECKING:
+    from platforms.profile import PlatformProfile
 
 ENTRY_POINT_GROUP = "llmservingsim.platforms"
 BUILTIN = {"cuda": "platforms.cuda", "rbln": "platforms.rbln"}
@@ -49,8 +53,21 @@ class Platform:
                 f"got {self.granularity!r}")
 
     @property
-    def profile(self) -> ModuleType:
-        return importlib.import_module(self.pkg.__name__ + ".profile")
+    def profile(self) -> PlatformProfile:
+        """The platform's ``PROFILE``, checked against the interface."""
+        from platforms.profile import PlatformProfile
+
+        module = importlib.import_module(self.pkg.__name__ + ".profile")
+        prof = getattr(module, "PROFILE", None)
+        if not isinstance(prof, PlatformProfile):
+            raise TypeError(
+                f"platform {self.name!r}: {module.__name__}.PROFILE must be a "
+                f"platforms.profile.PlatformProfile instance, got {type(prof).__name__}")
+        if self.granularity == "step" and type(prof).step_grid is PlatformProfile.step_grid:
+            raise TypeError(
+                f"platform {self.name!r} is step-granularity but "
+                f"{type(prof).__name__} does not override step_grid()")
+        return prof
 
     @property
     def simulator(self) -> ModuleType:
