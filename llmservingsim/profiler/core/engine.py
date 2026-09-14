@@ -27,11 +27,13 @@ from typing import Any
 import torch
 from vllm import LLM
 
-from llmservingsim.profiler.core import logger as log
-from llmservingsim.profiler.core.config import (
+from platforms import load_platform
+from profiler.core import logger as log
+from profiler.core.config import (
     HOST_ENGINE_DEFAULTS,
     SHARD_FIELDS,
     ProfileArgs,
+    mnbt_bumped,
     probe_moe_params,
 )
 
@@ -136,25 +138,39 @@ def fuse_engine_kwargs(args: ProfileArgs, tp: int) -> dict[str, Any]:
     ``model`` is left blank here; ``spin_up`` fills it in with the
     path to the temp dir it creates.
     """
-    # 1. Defaults + engine scalars (dtype, kv_cache_dtype, ...).
-    kwargs = _deep_merge(HOST_ENGINE_DEFAULTS, _profile_engine_overrides(args))
+    platform = load_platform(args.platform)
+    profile = platform.profile
+
+    # 1. Defaults + platform overrides + engine scalars (dtype, ...).
+    kwargs = _deep_merge(HOST_ENGINE_DEFAULTS, profile.ENGINE_KWARGS)
+    kwargs = _deep_merge(kwargs, _profile_engine_overrides(args))
 
     # 1b. Apply the MNBT bump. After the merge, kwargs["max_num_*"]
     # reflect the logical (user-intended) values; the engine must be
     # booted with room for skew/attention boundary shots that submit
     # up to ``MNBT + MSQ`` tokens in a single scheduler-bypass fire.
+    # A step-granularity sweep never mixes a prefill with decodes, and
+    # on such a platform MNBT is the compiled prefill shape itself, so
+    # it is booted as given (see mnbt_bumped).
     logical_mnbt = int(kwargs["max_num_batched_tokens"])
     logical_msq = int(kwargs["max_num_seqs"])
-    kwargs["max_num_batched_tokens"] = logical_mnbt + logical_msq
+    if mnbt_bumped(platform):
+        kwargs["max_num_batched_tokens"] = logical_mnbt + logical_msq
 
-    # 2. Single-GPU emulation. Actual model= path is set by spin_up.
-    kwargs["tensor_parallel_size"] = 1
+    # 2. Single-GPU emulation, unless the platform measures real ranks
+    # (collectives inside its compiled graph). Actual model= path is set
+    # by spin_up.
+    kwargs["tensor_parallel_size"] = 1 if profile.TP_EMULATION else tp
 
     # 3. Compose hf_overrides:
     #       defaults (num_hidden_layers=1) → CLI → sharded.
     hf_overrides: dict[str, Any] = dict(
         HOST_ENGINE_DEFAULTS.get("hf_overrides", {})
     )
+    if platform.granularity == "step":
+        # A step row is the whole forward, embedding to sampler, so the
+        # engine has to run every layer.
+        hf_overrides.pop("num_hidden_layers", None)
     if args.hf_overrides:
         hf_overrides = _deep_merge(hf_overrides, args.hf_overrides)
 
@@ -169,7 +185,7 @@ def fuse_engine_kwargs(args: ProfileArgs, tp: int) -> dict[str, Any]:
         )
 
     sharded_overrides: dict[str, Any] = {}
-    for field_name in SHARD_FIELDS:
+    for field_name in SHARD_FIELDS if profile.TP_EMULATION else ():
         if field_name not in args.model_config:
             log.debug(
                 "shard field %r not in model config; skipping",
@@ -243,14 +259,15 @@ def spin_up(
     return llm, kwargs, tmpdir
 
 
-def probe_limits(llm: LLM) -> RuntimeLimits:
+def probe_limits(llm: LLM, bumped: bool = True) -> RuntimeLimits:
     """Read back the runtime shapes the engine accepted.
 
     Undoes the MNBT bump applied in ``fuse_engine_kwargs`` so
     downstream consumers see the logical (user-intended)
     ``max_num_batched_tokens``. Since the bump amount equals MSQ
     (which is not itself bumped), the recovery is simply
-    ``engine_mnbt - engine_msq``.
+    ``engine_mnbt - engine_msq``. ``bumped=False`` for a platform that
+    was booted as given.
     """
     cfg = llm.llm_engine.vllm_config
 
@@ -270,7 +287,7 @@ def probe_limits(llm: LLM) -> RuntimeLimits:
 
     engine_mnbt = cfg.scheduler_config.max_num_batched_tokens
     engine_msq = cfg.scheduler_config.max_num_seqs
-    logical_mnbt = engine_mnbt - engine_msq
+    logical_mnbt = engine_mnbt - engine_msq if bumped else engine_mnbt
 
     return RuntimeLimits(
         max_num_batched_tokens=logical_mnbt,

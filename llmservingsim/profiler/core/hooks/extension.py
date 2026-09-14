@@ -32,7 +32,6 @@ from llmservingsim.profiler.core.hooks.moe_hook import (
     force_moe_routing,
     single_moe_layer,
 )
-from llmservingsim.profiler.core.hooks.timings import extract_samples
 
 
 class Extension:
@@ -49,6 +48,7 @@ class Extension:
         slice_: dict[str, dict[str, Any]],
         kind: str,
         iterations: int = 3,
+        platform: str = "cuda",
     ) -> list[dict[str, Any]]:
         """Run one profiling shot and return per-layer timings.
 
@@ -62,6 +62,8 @@ class Extension:
                 ``"moe"``. Used to decide whether to forge MoE routing.
             iterations: Number of timed forward passes (averaged via
                 the hook's invocation count). Default 3.
+            platform: Name of the ``platforms/<vendor>`` whose
+                ``profile.measure`` times the forwards.
 
         Returns:
             List of ``TimingSample`` as plain dicts (pickled back to host).
@@ -102,26 +104,18 @@ class Extension:
             )
 
         # -- measured runs (N iterations, averaged) -------------------
-        # Local import so that profiler/__init__.py doesn't require
-        # vllm.profiler to be importable at package-import time.
-        #
-        # vLLM's layerwise_profile hook accumulates ``cuda_time_us``
-        # and ``invocations`` across every forward inside its context.
-        # ``extract_samples`` divides one by the other, so running
-        # execute_model N times here yields the per-call mean — the
-        # cheap statistical fix for DVFS / boost-clock jitter that
-        # single-sample measurements don't mitigate.
-        from vllm.profiler.layerwise_profile import layerwise_profile
+        # How the forwards are timed is the platform's: CUDA wraps them
+        # in vLLM's layerwise_profile and reports per-layer kernel time,
+        # a step-granularity platform wall-clocks the whole forward.
+        # Either way N forwards are averaged, the cheap statistical fix
+        # for DVFS / boost-clock jitter that single samples don't get.
+        def _run_forward():
+            measured_out = self.model_runner.execute_model(_fresh_batch())
+            if measured_out is None:
+                self.model_runner.sample_tokens(None)
+
+        from platforms import load_platform
 
         with force_moe_routing(route):
-            with layerwise_profile() as hook:
-                for _ in range(iterations):
-                    measured_out = self.model_runner.execute_model(_fresh_batch())
-                    if measured_out is None:
-                        self.model_runner.sample_tokens(None)
-
-        stats = hook.results.convert_stats_to_dict()
-        summary = stats["summary_stats"]
-
-        samples = extract_samples(summary, slice_)
-        return [s.as_dict() for s in samples]
+            return load_platform(platform).profile.measure(
+                _run_forward, iterations, slice_)

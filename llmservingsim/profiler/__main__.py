@@ -83,6 +83,13 @@ def _add_common_flags(p: argparse.ArgumentParser) -> None:
              "folder name under perf/.",
     )
     p.add_argument(
+        "--platform",
+        default="cuda",
+        help="Platform plugin under platforms/ or an installed "
+             "llmservingsim.platforms entry point (cuda, rbln). "
+             "Default: cuda.",
+    )
+    p.add_argument(
         "--tp",
         default="1",
         help="Comma-separated TP degrees to sweep, e.g. '1,2,4'. "
@@ -315,6 +322,7 @@ def _build_profile_args(
         architecture=architecture,
         model=hf_id,
         hardware=ns.hardware,
+        platform=ns.platform,
         tp_degrees=_parse_tp(ns.tp),
         variant=ns.variant,
         dtype=ns.dtype,

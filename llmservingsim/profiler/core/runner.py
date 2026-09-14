@@ -15,16 +15,19 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from llmservingsim.profiler.core import logger as log
-from llmservingsim.profiler.core.categories import (
+from platforms import load_platform
+from profiler.core import logger as log
+from profiler.core.categories import (
     CATEGORY_BY_NAME,
     Category,
     categories_for,
 )
-from llmservingsim.profiler.core.config import Architecture, ProfileArgs, load_architecture
-from llmservingsim.profiler.core.engine import probe_limits, spin_down, spin_up
-from llmservingsim.profiler.core.hooks.timings import TimingSample
-from llmservingsim.profiler.core.writer import (
+from profiler.core.config import (
+    Architecture, ProfileArgs, load_architecture, mnbt_bumped,
+)
+from profiler.core.engine import probe_limits, spin_down, spin_up
+from profiler.core.hooks.timings import TimingSample
+from profiler.core.writer import (
     persist_meta,
     replicate_tp_stable,
     sink_for,
@@ -122,7 +125,7 @@ def _fire_one_category(
             raw = llm.collective_rpc(
                 "fire",
                 args=(shot.as_dict(), catalog_slice, category.name,
-                      args.measurement_iterations),
+                      args.measurement_iterations, args.platform),
             )
             # collective_rpc returns one result per worker (one per
             # TP rank). The timings are identical across ranks; take
@@ -155,6 +158,7 @@ def run_full(
     """Profile every (tp, category) pair for this architecture × model."""
     arch = load_architecture(arch_path)
     variant_root = _variant_root(out_root, args)
+    platform = load_platform(args.platform)
 
     log.banner(args, variant_root)
 
@@ -171,7 +175,7 @@ def run_full(
         with log.stage(f"TP={tp}  booting vLLM engine"):
             llm, engine_kwargs, tmpdir = spin_up(args, tp)
             last_engine_kwargs = engine_kwargs
-            limits = probe_limits(llm)
+            limits = probe_limits(llm, bumped=mnbt_bumped(platform))
 
         # Visibility: what the live engine actually allocated for
         # this (tp, 1-layer-shrunk) configuration. Drives every
@@ -193,7 +197,7 @@ def run_full(
 
         try:
             if not args.only_skew:
-                for category in categories_for(arch, tp):
+                for category in categories_for(arch, tp, platform):
                     _fire_one_category(
                         llm, category, arch, args, limits, tp, tp_root,
                     )
@@ -202,9 +206,10 @@ def run_full(
                          "attention / moe categories")
             # Skew measurement after all categories — uses the same
             # attention kernel slice but fires shots with non-uniform
-            # decode kv distributions. Writes tp_root/skew.csv.
-            if not args.skip_skew:
-                from llmservingsim.profiler.core.skew import sample_skew
+            # decode kv distributions. Writes tp_root/skew.csv. A step
+            # profile has no attention kernel to isolate, so none there.
+            if not args.skip_skew and platform.granularity == "layer":
+                from profiler.core.skew import sample_skew
                 sample_skew(llm, arch, args, limits, tp, tp_root)
         finally:
             spin_down(llm, tmpdir)
@@ -261,7 +266,7 @@ def run_slice(
 
     with log.stage(f"TP={tp}  booting vLLM engine"):
         llm, engine_kwargs, tmpdir = spin_up(args, tp)
-        limits = probe_limits(llm)
+        limits = probe_limits(llm, bumped=mnbt_bumped(load_platform(args.platform)))
 
     tp_root = variant_root / f"tp{tp}"
     tp_root.mkdir(parents=True, exist_ok=True)

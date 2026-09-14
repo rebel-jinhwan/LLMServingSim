@@ -192,6 +192,17 @@ def _load_meta(variant_root):
         return yaml.safe_load(f)
 
 
+def load_bundle_meta(hardware: str, model: str, dtype: str | None, kv_cache_dtype: str) -> dict:
+    """The perf bundle's meta.yaml for an instance, or {} when the bundle is
+    missing -- ``_load_perf_db`` reports that with the better message later.
+    ``serving.__main__`` reads ``platform`` off it to pick the scheduler."""
+    root = _variant_root(hardware, model, resolve_variant(dtype, kv_cache_dtype, get_config(model)))
+    try:
+        return _load_meta(root) or {}
+    except FileNotFoundError:
+        return {}
+
+
 def _hydrate_skew_fit_tables(meta, variant_root):
     """Load each TP's per-bucket alpha table from CSV into the meta dict.
 
@@ -493,6 +504,12 @@ def _build_tp_tables(tp_dir):
     moe_df = _read_category_csv(os.path.join(tp_dir, "moe.csv"), None)
     if moe_df is not None:
         tables["moe"] = _build_moe_table(moe_df)
+
+    # Step-granularity platforms: one whole-forward time per padded shape,
+    # same 4D key as attention.
+    step_df = _read_category_csv(os.path.join(tp_dir, "step.csv"), None)
+    if step_df is not None:
+        tables["step"] = _build_attention_table(step_df)
     return tables
 
 
@@ -824,15 +841,16 @@ def _lookup_attention_with_skew(
     return max(1, int(round(t_mean + alpha * (t_max - t_mean))))
 
 
-def _lookup_attention(perf_db, tp, prefill_chunk, kv_prefill, n_decode, kv_decode):
-    """4D log-linear interpolation on (prefill_chunk, kv_prefill,
-    n_decode, kv_decode). Every axis is doubled by the profiler, so we
-    bracket each axis's two nearest profiled values and blend linearly
-    in log-space.
+def _lookup_attention(perf_db, tp, prefill_chunk, kv_prefill, n_decode, kv_decode,
+                      table="attention"):
+    """4D interpolation on (prefill_chunk, kv_prefill, n_decode, kv_decode):
+    each axis is bracketed by its two nearest profiled values and blended
+    linearly (see _axis_bracket). ``table`` is ``attention`` or, for a
+    step-granularity bundle, ``step``.
     """
-    tbl = _tp_tables(perf_db, tp).get("attention")
+    tbl = _tp_tables(perf_db, tp).get(table)
     if tbl is None or not tbl["pc_nd_pairs"]:
-        raise KeyError(f"Missing attention profile for tp={tp}.")
+        raise KeyError(f"Missing {table} profile for tp={tp}.")
 
     pcq, ndq = max(int(prefill_chunk), 0), max(int(n_decode), 0)
     pc_vals, nd_vals = tbl["pc_vals"], tbl["nd_vals"]
@@ -909,6 +927,19 @@ def _build_trace_ctx(hardware, model, config, tp_size, pp_size, local_ep, ep_tot
     perf_db = _load_perf_db(hardware, model, variant, tp_needed, model_type)
     warn_if_runtime_exceeds_profiled(
         perf_db, runtime_max_num_batched_tokens, runtime_max_num_seqs)
+    if (perf_db["meta"] or {}).get("granularity") == "step":
+        # One row per forward (see _synthesize_step_trace): nothing per-layer
+        # to cut a pipeline stage on, hang a KV send off, or offload.
+        if pp_size > 1:
+            raise ValueError(
+                f"pp_size={pp_size} is not supported with the step-granularity "
+                f"profile {hardware}/{model}/{variant}: a single row has no "
+                f"transformer-block boundary to cut a stage on")
+        if pd_type is not None or enable_attn_offloading:
+            raise ValueError(
+                f"P/D disaggregation and attention offloading are not supported "
+                f"with the step-granularity profile {hardware}/{model}/{variant}: "
+                f"both attach to per-layer rows")
 
     n_embd = config['hidden_size']
     n_head = config['num_attention_heads']
@@ -1368,6 +1399,61 @@ def _emit_pp_pd_power(ctx, bctx):
 
 
 # ======================================================================
+# Step-granularity trace (one row per forward)
+# ======================================================================
+
+def _lookup_step(perf_db: dict, tp: int, prefill_chunk: int, kv_prefill: int,
+                 n_decode: int, kv_decode: int) -> int:
+    """Whole-forward time for a step-granularity bundle.
+
+    The device runs a compiled graph per padded shape, so the batch is
+    snapped to the shapes the profile holds before the lookup: a prefill
+    chunk is padded to the profiled chunk (the runner pads every prefill to
+    max_num_batched_tokens), a decode batch is rounded up to the next
+    profiled n_decode (the runner's buckets). The kv axes stay linear. The
+    shapes are read off step.csv itself, so a denser profile needs no
+    simulator change.
+    """
+    tbl = _tp_tables(perf_db, tp).get("step")
+    if tbl is None or not tbl["pc_nd_pairs"]:
+        raise KeyError(f"Missing step profile for tp={tp}.")
+    if prefill_chunk > 0:
+        pc, nd = max(tbl["pc_vals"]), 0
+    else:
+        buckets = [n for n in tbl["nd_vals"] if n > 0]
+        pc = 0
+        nd = next((n for n in buckets if n >= n_decode), buckets[-1])
+        if nd < n_decode:
+            logger.warning(
+                "decode batch of %d exceeds the largest profiled bucket %d for "
+                "%s/%s/%s; using that bucket", n_decode, nd,
+                perf_db["hardware"], perf_db["model"], perf_db["variant"])
+    return _lookup_attention(perf_db, tp, pc, kv_prefill, nd, kv_decode, table="step")
+
+
+def _synthesize_step_trace(ctx: TraceCtx, bctx: BatchCtx) -> tuple[list[tuple], list[int]]:
+    """One ``step`` row: token ids in from the host, sampled ids back out.
+    Collectives are inside the measured time, so there is no comm row.
+    """
+    if bctx.prefill_chunk > 0 and bctx.n_decode > 0:
+        raise ValueError(
+            f"batch #{bctx.batch.batch_id} mixes a prefill chunk with {bctx.n_decode} "
+            f"decodes, but the step profile holds only unmixed shapes; run with "
+            f"the platform's scheduler (meta.yaml::platform)")
+    latency_ns = _lookup_step(
+        ctx.perf_db, ctx.tp_size, bctx.prefill_chunk, bctx.kv_prefill,
+        bctx.n_decode, bctx.kv_decode_mean)
+    inp, _, _ = calculate_sizes(ctx.model, "embedding", bctx.total_len, parallel=ctx.tp_size, fp=ctx.fp)
+    _, _, out = calculate_sizes(ctx.model, "sampler", bctx.lm_head_len, parallel=ctx.tp_size, fp=ctx.fp)
+    rows = [("step", str(latency_ns), f'REMOTE:{ctx.node_id}', str(inp), 'LOCAL', '0',
+             f'REMOTE:{ctx.node_id}', str(out), 'NONE', '0', 'NONE')]
+    if ctx.power_model is not None:
+        ctx.power_model.add_npu_active_energy_consumption(
+            ctx.hardware, ctx.node_id, latency_ns, num_npus=ctx.tp_size)
+    return rows, []
+
+
+# ======================================================================
 # _synthesize_trace (non-interleaved)
 # ======================================================================
 
@@ -1414,6 +1500,9 @@ def _synthesize_trace(hardware, model, config, tp_size, pp_size, local_ep, ep_to
         [r.id for r in batch.requests],
         extra={"node_id": node_id, "instance_id": instance_id},
     )
+
+    if (ctx.perf_db["meta"] or {}).get("granularity") == "step":
+        return _synthesize_step_trace(ctx, bctx)
 
     # Line index at which each transformer block starts, used to cut
     # pipeline stages on block boundaries (see _pp_stage_boundaries).

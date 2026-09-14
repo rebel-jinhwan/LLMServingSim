@@ -23,6 +23,8 @@ heterogeneous instances. The other 15 flags are cluster-wide. See
 | --- | --- | --- | --- |
 | `--cluster-config` | path | `configs/cluster/single_node_single_instance.json` | Path to a cluster-config JSON. See **[Cluster config](./cluster-config)** |
 | `--network-backend` | choice | `analytical` | Network simulation backend. `analytical` (fast) or `ns3` (detailed, WIP) |
+| `--platform` | str | from the bundle | Platform plugin (`cuda`, `rbln`, or an installed `llmservingsim.platforms` entry point). Default: the `platform` recorded in each instance's perf bundle `meta.yaml`, else `cuda`. See **[Platforms](../simulator/platforms)** |
+| `--scheduler` | choice | `platform` | `platform`: the scheduler the platform names (cuda: the in-tree port; rbln: vllm-rbln's `RBLNScheduler`). `vllm`: drive the installed vLLM's own scheduler for any platform; needs vLLM importable |
 
 ## Batching and scheduling
 
