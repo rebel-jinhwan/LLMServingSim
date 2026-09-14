@@ -448,11 +448,16 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
 
         # Check if all required arguments are present in each instance
         # and resolve parallelism configuration
-        required_keys = ["model_name", "hardware", "npu_mem", "pd_type"]
+        required_keys = ["model_name", "hardware", "pd_type"]
         for instance in instances:
             for key in required_keys:
                 if key not in instance:
                     raise KeyError(f"Missing required key '{key}' in instance configuration.")
+
+            # Device facts come from platforms/<vendor>/devices/<hardware>.yaml;
+            # whatever the instance states in npu_mem overrides them key by key.
+            from platforms import resolve_npu_mem
+            instance["npu_mem"] = resolve_npu_mem(instance["hardware"], instance.get("npu_mem"))
 
             # Resolve tp_size, pp_size, ep_size from partial config
             model_config = get_config(instance["model_name"])
@@ -554,7 +559,11 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
 
             for key in mem_required_keys:
                 if key not in npu_mem:
-                    raise KeyError(f"Missing required key '{key}' in 'npu_mem' configuration.")
+                    raise KeyError(
+                        f"Missing required key '{key}' in 'npu_mem' configuration for "
+                        f"hardware '{instance['hardware']}': state it in the cluster config, "
+                        f"or describe the device in platforms/<vendor>/devices/"
+                        f"{instance['hardware']}.yaml.")
             
             if not npu_mem_enabled:
                 # insert to system configuration

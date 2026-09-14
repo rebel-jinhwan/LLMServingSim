@@ -14,11 +14,6 @@
                 {
                     "model_name": "meta-llama/Llama-3.1-70B",
                     "hardware": "H100",
-                    "npu_mem": {
-                        "mem_size": 80,
-                        "mem_bw": 3350,
-                        "mem_latency": 0
-                    },
                     "pd_type": null,
                     "tp_size": 4,
                     "num_npus": 4

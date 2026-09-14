@@ -14,11 +14,6 @@
                 {
                     "model_name": "MiniMaxAI/MiniMax-M2.5",
                     "hardware": "RBLN-CR03",
-                    "npu_mem": {
-                        "mem_size": 140,
-                        "mem_bw": 2000,
-                        "mem_latency": 0
-                    },
                     "num_npus": 4,
                     "tp_size": 4,
                     "ep_size": 4,
