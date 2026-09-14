@@ -63,6 +63,17 @@ class AttentionPoint:
 
 
 @dataclass(frozen=True)
+class StepPoint:
+    """One padded forward on one pipeline stage (stage 0 when pp=1)."""
+    stage: int
+    prefill_chunk: int
+    kv_prefill: int
+    n_decode: int
+    kv_decode: int
+    microseconds: float
+
+
+@dataclass(frozen=True)
 class ExpertPoint:
     tokens: int
     activated_experts: int
@@ -70,7 +81,7 @@ class ExpertPoint:
 
 
 # Union alias for writer.py's benefit.
-Point = DensePoint | SequencePoint | AttentionPoint | ExpertPoint
+Point = DensePoint | SequencePoint | AttentionPoint | ExpertPoint | StepPoint
 
 
 # ---------------------------------------------------------------------------
@@ -548,6 +559,22 @@ class StepCategory(AttentionCategory):
     def compose_shots(self, arch, args, limits, tp):
         from platforms import load_platform
         yield from load_platform(args.platform).profile.step_grid(args, limits)
+
+    def extract_points_all_ranks(self, shot, per_rank_us, tp):
+        """One StepPoint per pipeline stage from every worker's wall-clock.
+
+        vLLM lays ranks out pp-major (``rank = stage * tp + tp_rank``). A
+        stage's execute_model blocks on the stage before it, so a worker's
+        time is cumulative up to its stage; the per-stage cost is the
+        difference between consecutive stage maxima.
+        """
+        pc, kp, nd, kd = self.shot_key(shot)
+        num_stages = max(1, len(per_rank_us) // max(1, tp))
+        stage_max = [max(per_rank_us[s * tp:(s + 1) * tp]) for s in range(num_stages)]
+        prev = 0.0
+        for stage, cum in enumerate(stage_max):
+            yield StepPoint(stage, pc, kp, nd, kd, max(cum - prev, 1.0))
+            prev = max(prev, cum)
 
     def catalog_slice(self, arch):
         # Nothing to match against: the platform's measure() returns a

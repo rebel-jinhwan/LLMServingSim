@@ -1,0 +1,30 @@
+{
+    "num_nodes": 1,
+    "link_bw": 16,
+    "link_latency": 20000,
+    "nodes": [
+        {
+            "num_instances": 1,
+            "cpu_mem": {
+                "mem_size": 1024,
+                "mem_bw": 256,
+                "mem_latency": 0
+            },
+            "instances": [
+                {
+                    "model_name": "openai/gpt-oss-120b",
+                    "hardware": "RBLN-CR03",
+                    "npu_mem": {
+                        "mem_size": 140,
+                        "mem_bw": 2000,
+                        "mem_latency": 0
+                    },
+                    "num_npus": 1,
+                    "tp_size": 1,
+                    "ep_size": 1,
+                    "pd_type": null
+                }
+            ]
+        }
+    ]
+}

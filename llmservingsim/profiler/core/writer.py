@@ -246,7 +246,7 @@ _KEY_FIELDS_BY_CATEGORY: dict[str, list[str]] = {
     "per_sequence": ["layer", "sequences"],
     "attention": ["prefill_chunk", "kv_prefill", "n_decode", "kv_decode"],
     "moe": ["tokens", "activated_experts"],
-    "step": ["prefill_chunk", "kv_prefill", "n_decode", "kv_decode"],
+    "step": ["stage", "prefill_chunk", "kv_prefill", "n_decode", "kv_decode"],
 }
 
 

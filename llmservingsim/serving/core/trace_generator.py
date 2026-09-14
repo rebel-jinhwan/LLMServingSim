@@ -110,6 +110,8 @@ class TraceCtx:
     ep_total: int      # total EP degree across DP group
     tp_dim: list       # involved_dim for TP collectives (ALLREDUCE), None = all dims
     ep_dim: list       # involved_dim for EP collectives (ALLTOALL), None = all dims
+    step_overhead_ns: int          # host time per step a step-granularity profile did not measure
+    prefill_step_overhead_ns: int  # extra host time on a step that carries a prefill chunk
     dp_sum_total_len: int  # sum of total_len across DP group (0 = DP inactive). Captures the post-AG gathered size for MoE compute; dummy batches are pre-padded to max by serving/__main__.py so the sum reflects vLLM's CUDA-graph padding.
 
 
@@ -509,7 +511,12 @@ def _build_tp_tables(tp_dir):
     # same 4D key as attention.
     step_df = _read_category_csv(os.path.join(tp_dir, "step.csv"), None)
     if step_df is not None:
-        tables["step"] = _build_attention_table(step_df)
+        # One table per pipeline stage; a bundle without the column is pp=1.
+        if "stage" in step_df.columns:
+            tables["step"] = {int(s): _build_attention_table(g)
+                              for s, g in step_df.groupby("stage")}
+        else:
+            tables["step"] = {0: _build_attention_table(step_df)}
     return tables
 
 
@@ -848,7 +855,8 @@ def _lookup_attention(perf_db, tp, prefill_chunk, kv_prefill, n_decode, kv_decod
     linearly (see _axis_bracket). ``table`` is ``attention`` or, for a
     step-granularity bundle, ``step``.
     """
-    tbl = _tp_tables(perf_db, tp).get(table)
+    tbl = _tp_tables(perf_db, tp).get(table) if isinstance(table, str) else \
+        (_tp_tables(perf_db, tp).get(table[0]) or {}).get(table[1])
     if tbl is None or not tbl["pc_nd_pairs"]:
         raise KeyError(f"Missing {table} profile for tp={tp}.")
 
@@ -916,7 +924,8 @@ def _build_trace_ctx(hardware, model, config, tp_size, pp_size, local_ep, ep_tot
                      placement, gate, enable_attn_offloading, power_model, pim_model, pd_type,
                      variant, kv_cache_dtype='auto',
                      runtime_max_num_batched_tokens=None, runtime_max_num_seqs=None,
-                     tp_dim=None, ep_dim=None, dp_sum_total_len=0):
+                     tp_dim=None, ep_dim=None, dp_sum_total_len=0,
+                     step_overhead_ns=0, prefill_step_overhead_ns=0):
     model_type = config.get('model_type')
     if not model_type:
         raise KeyError(
@@ -928,13 +937,14 @@ def _build_trace_ctx(hardware, model, config, tp_size, pp_size, local_ep, ep_tot
     warn_if_runtime_exceeds_profiled(
         perf_db, runtime_max_num_batched_tokens, runtime_max_num_seqs)
     if (perf_db["meta"] or {}).get("granularity") == "step":
-        # One row per forward (see _synthesize_step_trace): nothing per-layer
-        # to cut a pipeline stage on, hang a KV send off, or offload.
-        if pp_size > 1:
+        # One row per forward per pipeline stage (see _synthesize_step_trace):
+        # nothing per-layer to hang a KV send off or offload.
+        stages = len(_tp_tables(perf_db, max(int(tp_size), 1)).get("step") or {})
+        if pp_size != stages:
             raise ValueError(
-                f"pp_size={pp_size} is not supported with the step-granularity "
-                f"profile {hardware}/{model}/{variant}: a single row has no "
-                f"transformer-block boundary to cut a stage on")
+                f"pp_size={pp_size} but the step-granularity profile "
+                f"{hardware}/{model}/{variant} holds {stages} pipeline stage(s); "
+                f"a step profile is taken at the deployment's pipeline depth")
         if pd_type is not None or enable_attn_offloading:
             raise ValueError(
                 f"P/D disaggregation and attention offloading are not supported "
@@ -963,6 +973,8 @@ def _build_trace_ctx(hardware, model, config, tp_size, pp_size, local_ep, ep_tot
         pd_type=pd_type,
         tp_size=tp_size, pp_size=pp_size, local_ep=local_ep, ep_total=ep_total,
         tp_dim=tp_dim, ep_dim=ep_dim, dp_sum_total_len=dp_sum_total_len,
+        step_overhead_ns=int(step_overhead_ns),
+        prefill_step_overhead_ns=int(prefill_step_overhead_ns),
     )
 
 
@@ -1403,7 +1415,7 @@ def _emit_pp_pd_power(ctx, bctx):
 # ======================================================================
 
 def _lookup_step(perf_db: dict, tp: int, prefill_chunk: int, kv_prefill: int,
-                 n_decode: int, kv_decode: int) -> int:
+                 n_decode: int, kv_decode: int, stage: int = 0) -> int:
     """Whole-forward time for a step-granularity bundle.
 
     The device runs a compiled graph per padded shape, so the batch is
@@ -1414,9 +1426,9 @@ def _lookup_step(perf_db: dict, tp: int, prefill_chunk: int, kv_prefill: int,
     shapes are read off step.csv itself, so a denser profile needs no
     simulator change.
     """
-    tbl = _tp_tables(perf_db, tp).get("step")
+    tbl = (_tp_tables(perf_db, tp).get("step") or {}).get(stage)
     if tbl is None or not tbl["pc_nd_pairs"]:
-        raise KeyError(f"Missing step profile for tp={tp}.")
+        raise KeyError(f"Missing step profile for tp={tp} stage={stage}.")
     if prefill_chunk > 0:
         pc, nd = max(tbl["pc_vals"]), 0
     else:
@@ -1428,29 +1440,48 @@ def _lookup_step(perf_db: dict, tp: int, prefill_chunk: int, kv_prefill: int,
                 "decode batch of %d exceeds the largest profiled bucket %d for "
                 "%s/%s/%s; using that bucket", n_decode, nd,
                 perf_db["hardware"], perf_db["model"], perf_db["variant"])
-    return _lookup_attention(perf_db, tp, pc, kv_prefill, nd, kv_decode, table="step")
+    return _lookup_attention(perf_db, tp, pc, kv_prefill, nd, kv_decode, table=("step", stage))
 
 
 def _synthesize_step_trace(ctx: TraceCtx, bctx: BatchCtx) -> tuple[list[tuple], list[int]]:
-    """One ``step`` row: token ids in from the host, sampled ids back out.
-    Collectives are inside the measured time, so there is no comm row.
+    """One ``step`` row per pipeline stage: token ids in from the host,
+    the hidden state between stages, sampled ids back out. Collectives are
+    inside the measured time, so there is no comm row. Each row is its own
+    block for ``_pp_stage_boundaries``, and the hidden-state size is the
+    same on both sides of every cut, which is what the converter's
+    SEND/RECV pairing needs.
     """
     if bctx.prefill_chunk > 0 and bctx.n_decode > 0:
         raise ValueError(
             f"batch #{bctx.batch.batch_id} mixes a prefill chunk with {bctx.n_decode} "
             f"decodes, but the step profile holds only unmixed shapes; run with "
             f"the platform's scheduler (meta.yaml::platform)")
-    latency_ns = _lookup_step(
-        ctx.perf_db, ctx.tp_size, bctx.prefill_chunk, bctx.kv_prefill,
-        bctx.n_decode, bctx.kv_decode_mean)
     inp, _, _ = calculate_sizes(ctx.model, "embedding", bctx.total_len, parallel=ctx.tp_size, fp=ctx.fp)
     _, _, out = calculate_sizes(ctx.model, "sampler", bctx.lm_head_len, parallel=ctx.tp_size, fp=ctx.fp)
-    rows = [("step", str(latency_ns), f'REMOTE:{ctx.node_id}', str(inp), 'LOCAL', '0',
-             f'REMOTE:{ctx.node_id}', str(out), 'NONE', '0', 'NONE')]
-    if ctx.power_model is not None:
-        ctx.power_model.add_npu_active_energy_consumption(
-            ctx.hardware, ctx.node_id, latency_ns, num_npus=ctx.tp_size)
-    return rows, []
+    hidden = bctx.total_len * ctx.config['hidden_size'] * ctx.fp
+    rows = []
+    for stage in range(ctx.pp_size):
+        latency_ns = _lookup_step(
+            ctx.perf_db, ctx.tp_size, bctx.prefill_chunk, bctx.kv_prefill,
+            bctx.n_decode, bctx.kv_decode_mean, stage=stage)
+        if stage == 0:
+            # The profile timed execute_model inside the worker. A real step
+            # also pays the scheduler, the executor round trip and output
+            # handling, calibrated in from a bench run (--step-overhead-us,
+            # --prefill-step-overhead-us) the way mem_util is.
+            latency_ns += ctx.step_overhead_ns
+            if bctx.prefill_chunk > 0:
+                latency_ns += ctx.prefill_step_overhead_ns
+        first, last = stage == 0, stage == ctx.pp_size - 1
+        rows.append((f"step_stage{stage}" if ctx.pp_size > 1 else "step", str(latency_ns),
+                     f'REMOTE:{ctx.node_id}' if first else 'LOCAL', str(inp if first else hidden),
+                     'LOCAL', '0',
+                     f'REMOTE:{ctx.node_id}' if last else 'LOCAL', str(out if last else hidden),
+                     'NONE', '0', 'NONE'))
+        if ctx.power_model is not None:
+            ctx.power_model.add_npu_active_energy_consumption(
+                ctx.hardware, ctx.node_id, latency_ns, num_npus=ctx.tp_size)
+    return rows, list(range(len(rows)))
 
 
 # ======================================================================
@@ -1485,13 +1516,16 @@ def _synthesize_trace(hardware, model, config, tp_size, pp_size, local_ep, ep_to
                       enable_attn_offloading, power_model, pim_model, fp,
                       variant, kv_cache_dtype='auto',
                       runtime_max_num_batched_tokens=None, runtime_max_num_seqs=None,
-                      tp_dim=None, ep_dim=None, dp_sum_total_len=0):
+                      tp_dim=None, ep_dim=None, dp_sum_total_len=0,
+                      step_overhead_ns=0, prefill_step_overhead_ns=0):
     ctx = _build_trace_ctx(hardware, model, config, tp_size, pp_size, local_ep, ep_total, node_id, fp,
                            placement, gate, enable_attn_offloading, power_model, pim_model, pd_type,
                            variant=variant, kv_cache_dtype=kv_cache_dtype,
                            runtime_max_num_batched_tokens=runtime_max_num_batched_tokens,
                            runtime_max_num_seqs=runtime_max_num_seqs,
-                           tp_dim=tp_dim, ep_dim=ep_dim, dp_sum_total_len=dp_sum_total_len)
+                           tp_dim=tp_dim, ep_dim=ep_dim, dp_sum_total_len=dp_sum_total_len,
+                           step_overhead_ns=step_overhead_ns,
+                           prefill_step_overhead_ns=prefill_step_overhead_ns)
     bctx = _build_batch_ctx(batch, ctx)
 
     logger.info(
@@ -1697,7 +1731,8 @@ def generate_trace(batch, hardware, tp_size, pp_size, local_ep, ep_total, pd_typ
                    placement={}, block_mode_on=False, expert_routing_policy="BALANCED",
                    enable_prefix_caching=False, enable_attn_offloading=False, power_model=None, pim_model=None,
                    enable_sub_batch_interleaving=False, fp=16, dtype=None, kv_cache_dtype='auto',
-                   tp_dim=None, ep_dim=None, dp_sum_total_len=0, enable_block_copy=True, inputs_root=None):
+                   tp_dim=None, ep_dim=None, dp_sum_total_len=0, enable_block_copy=True, inputs_root=None,
+                   step_overhead_us=0, prefill_step_overhead_us=0):
 
     model = batch.model
     config = get_config(model)
@@ -1749,7 +1784,9 @@ def generate_trace(batch, hardware, tp_size, pp_size, local_ep, ep_total, pd_typ
                         runtime_max_num_seqs=max_num_seqs,
                         tp_dim=tp_dim, ep_dim=ep_dim, dp_sum_total_len=dp_sum_total_len)
     if not enable_sub_batch_interleaving:
-        rows, block_starts = _synthesize_trace(*synth_args, batch, max_len, **synth_kwargs)
+        rows, block_starts = _synthesize_trace(*synth_args, batch, max_len, **synth_kwargs,
+                                               step_overhead_ns=step_overhead_us * 1000,
+                                               prefill_step_overhead_ns=prefill_step_overhead_us * 1000)
     else:
         batches = _make_sub_batch(batch)
         if len(batches) < 2 or len(batches[0].requests) == 0 or len(batches[1].requests) == 0:

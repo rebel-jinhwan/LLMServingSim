@@ -55,9 +55,36 @@ the kv axes: a prefill chunk to the profiled chunk, a decode batch up to
 the next profiled `n_decode`. Those shapes are read off the CSV itself,
 so profiling more buckets needs no simulator change.
 
-Pipeline parallelism, prefill/decode disaggregation and PIM attention
-offloading are refused with a step bundle: all three hang off per-layer
-rows.
+With pipeline parallelism the profile is taken at the deployment's
+pipeline depth: every worker times its own `execute_model`, a stage's
+time is cumulative up to it, so `step.csv` carries one row per `stage`
+with the difference, and the trace emits one row per stage with the
+hidden state on both sides of each cut. Prefill/decode disaggregation
+and PIM attention offloading are refused with a step bundle: both hang
+off per-layer rows.
+
+## Calibrating a step bundle against a bench run
+
+The profile times `execute_model` inside the worker. A real step also
+pays the scheduler, the executor round trip and output handling, so a
+raw step bundle runs a few percent fast. Two knobs carry that host time,
+calibrated against `python -m bench` the way `mem_util` is calibrated
+against `num_gpu_blocks`: `--step-overhead-us` on every step and
+`--prefill-step-overhead-us` on top for a step that carries a prefill
+chunk. Both can be set per instance in the cluster config.
+
+The first bundle, MiniMax-M2.5 on four RBLN-CR03 (tp4 + EP, vllm-rbln
+0.26), against a 24-request random workload:
+
+| Knobs | TTFT mean | TPOT mean | Latency mean |
+| --- | --- | --- | --- |
+| raw bundle | -7.3% | -3.9% | -4.1% |
+| 1300 us per step | -5.6% | +0.3% | -0.1% |
+| 1100 us per step, +9000 us per prefill step | +0.0% | +0.7% | +0.6% |
+
+The example lives under `bench/examples/RBLN-CR03/MiniMax-M2.5-tp4ep`
+and needs vLLM and `vllm-rbln` importable to re-run, since the
+simulation drives vllm-rbln's own scheduler.
 
 ## Running vLLM's scheduler instead of the port
 

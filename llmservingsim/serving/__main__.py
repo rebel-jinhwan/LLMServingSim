@@ -245,6 +245,9 @@ def _build_instance_runtime_configs(instances, args, dtype_to_bits):
             "enable_attn_offloading": enable_attn_offloading,
             "enable_sub_batch_interleaving": enable_sub_batch_interleaving,
             "enable_block_copy": instance.get("enable_block_copy", args.enable_block_copy),
+            "step_overhead_us": float(instance.get("step_overhead_us", args.step_overhead_us)),
+            "prefill_step_overhead_us": float(
+                instance.get("prefill_step_overhead_us", args.prefill_step_overhead_us)),
         })
     return runtime_configs
 
@@ -379,6 +382,14 @@ def main():
                         help='platform: the scheduler the platform names (cuda: the in-tree port; rbln: '
                              'vllm-rbln\'s RBLNScheduler). vllm: drive the installed vLLM\'s own scheduler '
                              'through serving.core.vllm_scheduler regardless of platform (needs vLLM importable).')
+    parser.add_argument('--step-overhead-us', type=float, default=0.0,
+                        help='Host time per step, in microseconds, added to every row of a step-granularity '
+                             'profile: scheduler, executor round trip and output handling that the profiled '
+                             'execute_model does not include. Calibrate against a bench run like mem_util. '
+                             'Per-instance as "step_overhead_us"')
+    parser.add_argument('--prefill-step-overhead-us', type=float, default=0.0,
+                        help='Extra host time on a step that carries a prefill chunk (step-granularity '
+                             'profiles). Per-instance as "prefill_step_overhead_us"')
     parser.add_argument('--engine-kwargs', type=str, default=None,
                         help='JSON object of extra vLLM EngineArgs for the vLLM-driven scheduler '
                              '(--scheduler vllm or the rbln platform), e.g. \'{"max_model_len": 65536}\'. '
@@ -843,6 +854,8 @@ def main():
                                        tp_dim=inst.get("tp_dim"), ep_dim=inst.get("ep_dim"),
                                        dp_sum_total_len=sum_total_len,
                                        enable_block_copy=inst_cfg["enable_block_copy"],
+                                       step_overhead_us=inst_cfg["step_overhead_us"],
+                                       prefill_step_overhead_us=inst_cfg["prefill_step_overhead_us"],
                                        inputs_root=run_paths.inputs_root)
                         generate_graph(batch, inst["hardware"], inst["num_npus"], nid,
                                        inst_id, inst2npu_mapping[inst_id],
@@ -931,6 +944,8 @@ def main():
                                            tp_dim=inst.get("tp_dim"), ep_dim=inst.get("ep_dim"),
                                            dp_sum_total_len=sum_total_len,
                                            enable_block_copy=inst_cfg["enable_block_copy"],
+                                       step_overhead_us=inst_cfg["step_overhead_us"],
+                                       prefill_step_overhead_us=inst_cfg["prefill_step_overhead_us"],
                                            inputs_root=run_paths.inputs_root)
                             generate_graph(batch, inst["hardware"], inst["num_npus"], nid,
                                            inst_id, inst2npu_mapping[inst_id],
@@ -974,6 +989,8 @@ def main():
                                    dtype=inst_cfg["dtype"], kv_cache_dtype=inst_cfg["kv_cache_dtype"],
                                    tp_dim=instance["tp_dim"], ep_dim=instance["ep_dim"],
                                    enable_block_copy=inst_cfg["enable_block_copy"],
+                                       step_overhead_us=inst_cfg["step_overhead_us"],
+                                       prefill_step_overhead_us=inst_cfg["prefill_step_overhead_us"],
                                    inputs_root=run_paths.inputs_root)
                     generate_graph(new_req, instance["hardware"], instance["num_npus"], node_id,
                                    instance_id, inst2npu_mapping[instance_id],
