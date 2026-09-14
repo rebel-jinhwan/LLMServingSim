@@ -75,14 +75,18 @@ class VllmScheduler(Scheduler):
         with open(f"{tmpdir}/config.json", "w") as f:
             json.dump(self.config, f)
 
-        dtype = {8: "float16", 16: "bfloat16", 32: "float32"}
         kwargs: dict[str, Any] = dict(
             model=tmpdir,
             skip_tokenizer_init=True,
             load_format="dummy",
-            enforce_eager=True,
+            # No model runs here, so vLLM's default compilation settings are
+            # left alone; vllm-rbln rejects enforce_eager for gpt-oss.
             seed=0,
-            dtype=dtype.get(self.memory.fp * 8, "bfloat16"),
+            # The activation dtype, which vLLM reads off the checkpoint. The
+            # simulator's --dtype is the weight footprint (fp8 / int8 for a
+            # quantized checkpoint) and is not what a quantization method
+            # accepts here.
+            dtype="auto",
             kv_cache_dtype=self._kv_cache_dtype,
             max_model_len=self.config['max_position_embeddings'],
             max_num_seqs=self.max_num_seqs,

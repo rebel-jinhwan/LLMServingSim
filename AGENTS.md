@@ -204,9 +204,16 @@ chunk), also per instance in the cluster config, carry the host time the
 profiled `execute_model` does not include; fit them against a bench run
 after `mem_util` is matched to `num_gpu_blocks`. MiniMax-M2.5 tp4ep on
 RBLN-CR03 went from -7.3% / -3.9% (TTFT / TPOT mean) raw to +0.0% / +0.7%
-at 1100 / 9000 us; the example is `bench/examples/RBLN-CR03/MiniMax-M2.5-tp4ep`,
-which needs vLLM + vllm-rbln importable to re-run and is therefore not in
-the default example lists.
+at 1100 / 9000 us; gpt-oss-120b tp1 needed 2200 / 7000 us (raw -11.0% /
+-31.7%), so the knobs are per deployment. The examples are
+`bench/examples/RBLN-CR03/{MiniMax-M2.5-tp4ep,gpt-oss-120b-tp1}`, which need
+vLLM + vllm-rbln importable to re-run and are therefore not in the default
+example lists. The gpt-oss config raises `npu_mem.mem_size` past the card
+because the memory model sizes MXFP4 weights at 8 bits (no 4-bit dtype), and
+the number is what holds vLLM's 227 blocks. `MiniMax-M2.5-pp4/` is ground
+truth only: per-rank wall-clocks inside `collective_rpc` do not measure a
+pipeline's latency (prefill came out 4x long, decode 4x short), so a pp step
+profile needs one forward timed from the host.
 
 **RBLN facts that cost a boot each to learn.** vllm-rbln validates
 `block_size` against its `prefix_block_size` (2048), so the KV block must be

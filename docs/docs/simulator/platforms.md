@@ -82,9 +82,25 @@ The first bundle, MiniMax-M2.5 on four RBLN-CR03 (tp4 + EP, vllm-rbln
 | 1300 us per step | -5.6% | +0.3% | -0.1% |
 | 1100 us per step, +9000 us per prefill step | +0.0% | +0.7% | +0.6% |
 
-The example lives under `bench/examples/RBLN-CR03/MiniMax-M2.5-tp4ep`
-and needs vLLM and `vllm-rbln` importable to re-run, since the
-simulation drives vllm-rbln's own scheduler.
+The second bundle, gpt-oss-120b (MXFP4) on one RBLN-CR03 with four
+decode buckets (1, 2, 4, 8), against 32 random-length requests:
+
+| Knobs | TTFT mean | TPOT mean | Latency mean |
+| --- | --- | --- | --- |
+| raw bundle | -11.0% | -31.7% | -29.9% |
+| MiniMax's 1100 / 9000 us | +0.7% | -16.8% | -15.3% |
+| 2200 us per step, +7000 us per prefill step | -0.2% | -0.9% | -0.8% |
+
+The knobs are per deployment, not per platform: a single-device decode
+step of 5 ms carries proportionally far more host time than a four-device
+MoE step of 30 ms. Both examples live under `bench/examples/RBLN-CR03/`
+and need vLLM and `vllm-rbln` importable to re-run, since the simulation
+drives vllm-rbln's own scheduler. The gpt-oss config raises
+`npu_mem.mem_size` above the card's 140 GB because the memory model sizes
+an MXFP4 checkpoint at 8 bits per weight, twice its footprint; the
+number is chosen so the pool holds vLLM's 227 blocks. The pp4 MiniMax
+run is kept as ground truth only (`MiniMax-M2.5-pp4/NOTE.md`): the
+profiler's per-rank timing does not measure a pipeline's latency yet.
 
 ## Running vLLM's scheduler instead of the port
 
