@@ -88,9 +88,13 @@ class Extension:
         # sample_tokens to exercise the sampler path (if execute_model
         # returns None it means the scheduler consumed everything and
         # sample_tokens finalizes the step).
-        warmup_out = self.model_runner.execute_model(_fresh_batch())
+        # Through the worker, not the runner: with pipeline parallelism the
+        # worker's execute_model receives the previous stage's hidden state
+        # and hands its own on, and sample_tokens completes the step on
+        # every rank (the non-last ones return an empty output).
+        warmup_out = self.execute_model(_fresh_batch())
         if warmup_out is None:
-            self.model_runner.sample_tokens(None)
+            self.sample_tokens(None)
 
         # -- optional MoE routing forge --------------------------------
         route: ExpertRoute | None = None
@@ -114,9 +118,9 @@ class Extension:
         # Either way N forwards are averaged, the cheap statistical fix
         # for DVFS / boost-clock jitter that single samples don't get.
         def _run_forward():
-            measured_out = self.model_runner.execute_model(_fresh_batch())
+            measured_out = self.execute_model(_fresh_batch())
             if measured_out is None:
-                self.model_runner.sample_tokens(None)
+                self.sample_tokens(None)
 
         with force_moe_routing(route):
             return profile.measure(_run_forward, iterations, slice_)
