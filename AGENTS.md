@@ -172,8 +172,8 @@ perf/<hw>/<model>/<variant>/
 `tp_stable: true` in the yaml (layernorms, sampler) are profiled once at TP=1 and
 replicated into other `tp<N>/` folders by the writer.
 
-The profiler Docker uses **vLLM v0.19.0** (`vllm/vllm-openai:v0.19.0` or
-`v0.19.0-cu130` for CUDA 13.x). The MoE hook patches `FusedMoE.forward_native` for
+The profiler Docker uses **vLLM v0.24.0** (`vllm/vllm-openai:v0.24.0` or
+`v0.24.0-cu130` for CUDA 13.x). The MoE hook patches `FusedMoE.forward_native` for
 forced expert routing — method name is version-specific.
 
 ### Skew profiling & alpha fit
@@ -638,8 +638,8 @@ These must match the C++ enum in `astra-sim/astra-sim/system/AstraMemoryAPI.hh`.
 
 ### Docker environments
 - **vLLM container** (used by `python -m profiler`, `python -m bench`, and
-  `python -m workloads.generators`): `vllm/vllm-openai:v0.19.0` (or
-  `v0.19.0-cu130` for CUDA 13.x)
+  `python -m workloads.generators`): `vllm/vllm-openai:v0.24.0` (or
+  `v0.24.0-cu130` for CUDA 13.x)
   - Launched via `scripts/docker-vllm.sh`
   - Mounts the **LLMServingSim repo root** as `/workspace`; container cwd
     is `/workspace`, so `python -m profiler …` etc. work directly

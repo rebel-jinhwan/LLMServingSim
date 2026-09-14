@@ -31,5 +31,5 @@ docker run --name vllm_docker \
   --shm-size=16g \
   -w /workspace \
   --entrypoint /bin/bash \
-  vllm/vllm-openai:v0.19.0 \
+  vllm/vllm-openai:v0.24.0 \
   -c "pip install datasets matplotlib && exec bash"
