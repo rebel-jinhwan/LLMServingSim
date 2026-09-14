@@ -14,22 +14,12 @@
                 {
                     "model_name": "meta-llama/Llama-3.1-8B",
                     "hardware": "RTXPRO6000",
-                    "npu_mem": {
-                        "mem_size": 96,
-                        "mem_bw": 1597,
-                        "mem_latency": 0
-                    },
                     "pd_type": "prefill",
                     "tp_size": 1
                 },
                 {
                     "model_name": "meta-llama/Llama-3.1-8B",
                     "hardware": "RTXPRO6000",
-                    "npu_mem": {
-                        "mem_size": 96,
-                        "mem_bw": 1597,
-                        "mem_latency": 0
-                    },
                     "pd_type": "decode",
                     "tp_size": 1
                 }

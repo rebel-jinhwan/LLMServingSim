@@ -134,12 +134,46 @@ Not modelled by the vLLM-driven scheduler: prefill/decode disaggregation
 and `--prefix-storage`. Both are KV connectors in vLLM and sit below the
 scheduler; the port models them directly.
 
+## Devices
+
+A platform can describe the devices it runs on, one yaml per device under
+`platforms/<vendor>/devices/`, named exactly as the cluster config's
+`hardware` and the `profiler/perf/<hardware>/` folder:
+
+```yaml
+# platforms/rbln/devices/RBLN-CR03.yaml
+name: RBLN-CR03
+npu_mem:
+  mem_size: 140      # GB
+  mem_bw: 2000       # GB/s, a placeholder until measured
+  mem_latency: 0     # ns
+kv_cache_dtypes: [auto]
+```
+
+A spec holds hardware facts only, the ones every deployment of the device
+shares. Its `npu_mem` values are the defaults for any instance naming the
+device, and the instance's own `npu_mem` overrides them key by key, so a
+cluster config states only what differs for that deployment. Both the
+simulator and the profiler refuse a `kv_cache_dtype` outside
+`kv_cache_dtypes`, the profiler before an engine boots. A device with no
+spec keeps working when its cluster config states `npu_mem` in full.
+
+| Device | Platform | `mem_size` | `mem_bw` | KV cache dtypes |
+| --- | --- | --- | --- | --- |
+| `RTX4090` | cuda | 24 | 1008 | auto, fp8 |
+| `RTXPRO6000` | cuda | 96 | 1597 | auto, fp8 |
+| `H100` | cuda | 80 | 3350 | auto, fp8 |
+| `RBLN-CR03` | rbln | 140 | 2000, placeholder | auto |
+
+`python -m platforms` checks every built-in spec and the merge.
+
 ## Writing a platform
 
 ```
 platforms/<vendor>/__init__.py    NAME = "<vendor>"; GRANULARITY = "layer" | "step"
 platforms/<vendor>/profile.py     PROFILE = <Vendor>Profile(), a PlatformProfile subclass
 platforms/<vendor>/simulator.py   scheduler_class()
+platforms/<vendor>/devices/       <hardware>.yaml per device, optional
 ```
 
 The profiler side is one interface, `platforms.profile.PlatformProfile`.

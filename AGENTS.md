@@ -39,8 +39,11 @@ LLMServingSim/
 ├── platforms/                  # Platform plugins: how a vLLM hardware platform differs from CUDA
 │   ├── __init__.py             # load_platform(): --platform, meta.yaml::platform, entry points, cuda
 │   ├── profile.py              # PlatformProfile: the profiler-side interface, CUDA defaults
+│   ├── __main__.py             # `python -m platforms`: device specs + PlatformProfile checks
 │   ├── cuda/                   # NAME/GRANULARITY, profile.py (layerwise_profile), simulator.py (port)
+│   │   └── devices/            # RTX4090.yaml, RTXPRO6000.yaml, H100.yaml
 │   └── rbln/                   # step granularity, profile.py (wall-clock step grid), simulator.py (RBLNScheduler)
+│       └── devices/            # RBLN-CR03.yaml
 ├── configs/
 │   ├── cluster/                # Cluster topology configs (hardware, memory, instances)
 │   ├── model/                  # Model architecture configs (subset of HF config.json)
@@ -158,6 +161,18 @@ the simulator's counterpart: one package per vendor with `NAME`,
   platform whose class does not override `step_grid`. The base class imports
   nothing heavy at module scope, so `platforms` still loads in the simulator
   container. `python -m platforms.profile` checks both built-ins.
+- `devices/<hardware>.yaml`: one per device, named exactly as the cluster
+  config's `hardware` and the `profiler/perf/<hardware>/` folder. It holds
+  hardware facts only: `npu_mem` defaults (`mem_size`, `mem_bw`,
+  `mem_latency`) and `kv_cache_dtypes`. `platforms.load_device()` finds it
+  across vendors (built-ins first, installed entry points only on a miss, so
+  built-in hardware never imports a plugin); `resolve_npu_mem()` merges it
+  under the instance's `npu_mem` in `config_builder.py`, key by key; the
+  simulator and the profiler both refuse a `kv_cache_dtype` outside the list,
+  the profiler before booting. A device with no spec still works when the
+  cluster config states `npu_mem` in full. Power stays in the node's `power`
+  block. Do not add a spec value you have not measured without saying so in
+  the file: RBLN-CR03's `mem_bw` is a placeholder and says it is
 - `simulator.py`: `scheduler_class()`. cuda returns the in-tree port
   (`serving/core/scheduler.py`); rbln returns `RBLNVllmScheduler`, a
   `serving/core/vllm_scheduler.py::VllmScheduler` pinned to
@@ -597,7 +612,11 @@ The simulator loads these via `get_config(model_name)` in `utils.py`.
 
 ### Cluster configs
 Cluster configs in `configs/cluster/` define hardware topology. Key instance fields:
-- `hardware`: must match a directory name in `profiler/perf/<hardware>/`
+- `hardware`: must match a directory name in `profiler/perf/<hardware>/`, and names
+  `platforms/<vendor>/devices/<hardware>.yaml` when one exists
+- `npu_mem`: optional when the device has a spec. Any of `mem_size`, `mem_bw`,
+  `mem_latency` stated here overrides the spec's value; state only what differs
+  for this deployment. A device without a spec needs all three
 - `model_name`: must match a config in `configs/model/{model_name}.json`
 - `num_npus`: total GPUs for the instance (optional, inferred from `tp_size * pp_size`)
 - `tp_size`: tensor parallel degree (required or inferred)
@@ -807,8 +826,9 @@ equality against recorded results:
    and run `./profiler/profile.sh` from the repo root inside the vLLM container.
 4. `python -m serving.core.vllm_scheduler` checks the vLLM-driven scheduler
    against the port (needs vLLM importable, no ASTRA-Sim).
-5. `python -m platforms.profile` checks that every built-in platform exposes a
-   `PlatformProfile` and that the loader refuses a step platform with no grid.
+5. `python -m platforms` checks every built-in device spec, the `npu_mem` merge,
+   that every built-in platform exposes a `PlatformProfile`, and that the loader
+   refuses a step platform with no grid.
 
 A scenario whose clock equals an existing one exercises flag parsing and
 nothing else. Several knobs only bite once the KV cache is saturated, which is

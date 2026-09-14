@@ -23,7 +23,7 @@ from serving.core.graph_generator import *
 from serving.core.trace_generator import *
 from serving.core.pim_model import *
 from serving.core.config_builder import *
-from platforms import load_platform
+from platforms import load_platform, supported_kv_cache_dtypes
 from serving.core.router import *
 from serving.core.power_model import *
 from serving.core.logger import *
@@ -209,6 +209,12 @@ def _build_instance_runtime_configs(instances, args, dtype_to_bits):
         kv_cache_dtype = instance.get("kv_cache_dtype", args.kv_cache_dtype)
         if kv_cache_dtype not in ("auto", "fp8"):
             raise ValueError(f"Unsupported kv_cache_dtype '{kv_cache_dtype}' for instance {instance_id}")
+        device_kv = supported_kv_cache_dtypes(instance["hardware"])
+        if device_kv is not None and kv_cache_dtype not in device_kv:
+            raise ValueError(
+                f"kv_cache_dtype '{kv_cache_dtype}' for instance {instance_id} is not supported "
+                f"on {instance['hardware']} (supports {device_kv}; see "
+                f"platforms/<vendor>/devices/{instance['hardware']}.yaml)")
 
         enable_attn_offloading = instance.get("enable_attn_offloading", args.enable_attn_offloading)
         enable_sub_batch_interleaving = instance.get(

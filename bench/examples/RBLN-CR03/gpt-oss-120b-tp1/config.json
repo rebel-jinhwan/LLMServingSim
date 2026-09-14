@@ -16,8 +16,6 @@
                     "hardware": "RBLN-CR03",
                     "npu_mem": {
                         "mem_size": 172.7,
-                        "mem_bw": 2000,
-                        "mem_latency": 0,
                         "mem_util": 1.0
                     },
                     "num_npus": 1,

@@ -1,0 +1,8 @@
+# NVIDIA GeForce RTX 4090. Hardware facts every cluster config naming this
+# device shares; an instance's npu_mem overrides any of them.
+name: RTX4090
+npu_mem:
+  mem_size: 24       # GB
+  mem_bw: 1008       # GB/s
+  mem_latency: 0     # ns
+kv_cache_dtypes: [auto, fp8]

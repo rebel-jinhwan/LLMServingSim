@@ -6,6 +6,14 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
 ## [Unreleased]
 
 ### Added
+- `platforms/<vendor>/devices/<hardware>.yaml` — one spec per device (RTX4090,
+  RTXPRO6000, H100, RBLN-CR03) holding the hardware facts every deployment shares:
+  `npu_mem` defaults and the KV cache dtypes the device runs. A cluster config's
+  `npu_mem` is now optional for a device with a spec and overrides it key by key,
+  so the configs keep only deployment-specific values such as `mem_util`. The
+  simulator and the profiler refuse an unsupported `kv_cache_dtype`, the profiler
+  before booting (fp8 KV on RBLN-CR03 used to fail minutes into compilation).
+  `python -m platforms` checks the specs and the merge.
 - `platforms/` — platform plugins, the simulator's counterpart to vLLM's out-of-tree
   platform plugins. One package per vendor with `profile.py` (how a shot is measured,
   whether TP is emulated on one device) and `simulator.py` (which scheduler runs),

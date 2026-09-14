@@ -15,9 +15,7 @@
                     "model_name": "openai/gpt-oss-120b",
                     "hardware": "RBLN-CR03",
                     "npu_mem": {
-                        "mem_size": 172.7,
-                        "mem_bw": 2000,
-                        "mem_latency": 0
+                        "mem_size": 172.7
                     },
                     "num_npus": 1,
                     "tp_size": 1,
