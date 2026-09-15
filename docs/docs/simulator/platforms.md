@@ -135,9 +135,9 @@ build the engine config from `configs/model/<model>.json`, let
 `KVCacheConfig` from the memory model's block count, then alternate
 `schedule()` and `update_from_output()` around the simulated forward.
 `--scheduler vllm` selects it for any platform, and a platform whose vLLM
-plugin schedules differently names its own subclass through
-`scheduler_cls`, so the plugin's scheduling rules and `VLLM_*` environment
-apply verbatim.
+plugin schedules differently assigns its own subclass in
+`bind_scheduler()`, so the plugin's scheduling rules and `VLLM_*`
+environment apply verbatim.
 
 It needs vLLM importable in the simulator container. The CPU wheel is
 enough:
@@ -250,8 +250,15 @@ class ExamplePlatform(PlatformSpec):
 | `granularity` | `"layer"` | The device runs a compiled graph per padded shape |
 | `is_available()` | `False` | The platform can probe for its hardware |
 | `profile_cls` | raises | Always, to profile on the hardware |
-| `scheduler_cls` | the in-tree port of vLLM's `Scheduler` | The platform's vLLM plugin schedules differently |
+| `bind_scheduler()` | binds nothing, so the in-tree port of vLLM's `Scheduler` runs | The platform's vLLM plugin schedules differently: assign `self.scheduler` |
 | `resource_dir` | the spec module's directory | Never, in practice |
+
+Each hook has a resolved counterpart that callers read rather than the hook
+itself: `spec.profile` builds and checks `profile_cls`, and reading
+`spec.scheduler` runs `bind_scheduler()` once, which assigns `self.scheduler`
+or leaves it alone, in which case the in-tree port is bound. Binding is a
+method and not an attribute because it may have to import the vendor's
+package, which must not happen until a run asks for it.
 
 Two rules make the spec safe to hold without the hardware, which is what
 lets the simulator model a platform it cannot run on: importing the

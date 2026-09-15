@@ -72,12 +72,44 @@ class PlatformSpec:
                 f"{type(prof).__name__} does not override step_grid()")
         return prof
 
+    _scheduler: type | None = None
+    _scheduler_bound: bool = False
+
+    def bind_scheduler(self) -> None:
+        """Bind the platform's own scheduler by assigning ``self.scheduler``.
+
+        A platform whose vLLM plugin schedules differently sets it to a
+        ``serving.core.vllm_scheduler.VllmScheduler`` subclass pinned to that
+        plugin's scheduler class, so the simulation schedules with the
+        vendor's real code. A platform that does not override this, or
+        overrides it and binds nothing, runs the in-tree port of vLLM's own
+        scheduler, which is what CUDA vLLM does.
+
+        A hook rather than an attribute because binding may have to import
+        the vendor's package, which must not happen until a run asks for it.
+        """
+        return None
+
     @property
-    def scheduler_cls(self) -> type:
-        """The simulator's scheduler for this platform: the in-tree port of
-        vLLM's scheduler unless the platform needs its own."""
-        from serving.core.scheduler import Scheduler
-        return Scheduler
+    def scheduler(self) -> type:
+        """The scheduler class this platform runs. Reading it binds once:
+        ``bind_scheduler()`` runs, and if it assigned nothing the in-tree
+        port is bound in its place."""
+        if not self._scheduler_bound:
+            self._scheduler_bound = True
+            self.bind_scheduler()
+            if self._scheduler is None:
+                from serving.core.scheduler import Scheduler
+                self._scheduler = Scheduler
+        assert self._scheduler is not None
+        return self._scheduler
+
+    @scheduler.setter
+    def scheduler(self, cls: type) -> None:
+        if not inspect.isclass(cls):
+            raise TypeError(
+                f"platform {self.name!r}: scheduler must be a class, got {type(cls).__name__}")
+        self._scheduler = cls
 
     @property
     def resource_dir(self) -> Path:

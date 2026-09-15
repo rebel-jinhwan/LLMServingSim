@@ -85,7 +85,37 @@ def _selfcheck() -> None:
         assert "step_grid" in str(e), e
     else:
         raise AssertionError("a step platform without step_grid was accepted")
-    print(f"ok: {sorted(registry())} expose PlatformProfile; a step platform without step_grid is refused")
+
+    # A platform that binds no scheduler takes the in-tree port; one that
+    # binds something that is not a class is refused at the assignment.
+    from serving.core.scheduler import Scheduler
+
+    class NoScheduler(PlatformSpec):
+        name = "nosched"
+
+    class OwnScheduler(PlatformSpec):
+        name = "ownsched"
+
+        def bind_scheduler(self):
+            self.scheduler = Scheduler  # any class; the point is that it sticks
+
+    class BadScheduler(PlatformSpec):
+        name = "badsched"
+
+        def bind_scheduler(self):
+            self.scheduler = "serving.core.scheduler.Scheduler"
+
+    assert NoScheduler().scheduler is Scheduler
+    own = OwnScheduler()
+    assert own.scheduler is Scheduler and own.scheduler is own.scheduler
+    try:
+        BadScheduler().scheduler
+    except TypeError as e:
+        assert "must be a class" in str(e), e
+    else:
+        raise AssertionError("a non-class scheduler binding was accepted")
+    print(f"ok: {sorted(registry())} expose PlatformProfile; a step platform without "
+          f"step_grid is refused; an unbound scheduler falls back to the in-tree port")
 
 
 if __name__ == "__main__":

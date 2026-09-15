@@ -565,7 +565,7 @@ def main():
         platform = load_platform(args.platform, load_bundle_meta(
             instance["hardware"], instance["model_name"],
             inst_cfg["dtype"], inst_cfg["kv_cache_dtype"]), hardware=instance["hardware"])
-        scheduler_cls = platform.scheduler_cls
+        scheduler_cls = platform.scheduler
         if args.scheduler == 'vllm':
             from serving.core.vllm_scheduler import VllmScheduler
             scheduler_cls = VllmScheduler
