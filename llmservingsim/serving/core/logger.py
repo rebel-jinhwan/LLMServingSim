@@ -28,13 +28,15 @@ Extras:
   so callers can render panels and rules without reaching for ``rich``
   directly.
 """
+
 from __future__ import annotations
 
 import logging
 import textwrap
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Iterator, Optional, Union
+from typing import Any
 
 from rich.align import Align
 from rich.console import Console
@@ -49,7 +51,6 @@ from rich.progress import (
 )
 from rich.text import Text
 from rich.theme import Theme
-
 
 PROJECT_ROOT_LOGGER_NAME = "llmservingsim"
 
@@ -175,7 +176,7 @@ class _RichSimHandler(logging.Handler):
 class _PlainFileFormatter(logging.Formatter):
     """Plain-text formatter for optional file output — no ANSI, no Rich."""
 
-    def formatTime(self, record: logging.LogRecord, datefmt: Optional[str] = None) -> str:
+    def formatTime(self, record: logging.LogRecord, datefmt: str | None = None) -> str:
         dt = datetime.fromtimestamp(record.created)
         return f"{dt:%Y-%m-%d %H:%M:%S}.{int(record.msecs):03d}"
 
@@ -226,8 +227,8 @@ class ComponentLoggerAdapter(logging.LoggerAdapter):
         self,
         logger: logging.Logger,
         component: str,
-        node_id: Optional[int] = None,
-        instance_id: Optional[int] = None,
+        node_id: int | None = None,
+        instance_id: int | None = None,
     ) -> None:
         super().__init__(logger, extra={})
         self.component = component
@@ -267,9 +268,9 @@ _configured = False
 
 
 def configure_logger(
-    level: Union[str, int] = "INFO",
+    level: str | int = "INFO",
     *,
-    log_file: Optional[str] = None,
+    log_file: str | None = None,
 ) -> None:
     """Initialize the project logger.
 
@@ -309,10 +310,10 @@ def configure_logger(
 
 
 def get_logger(
-    component: Optional[Union[str, type]] = None,
+    component: str | type | None = None,
     *,
-    node_id: Optional[int] = None,
-    instance_id: Optional[int] = None,
+    node_id: int | None = None,
+    instance_id: int | None = None,
 ) -> ComponentLoggerAdapter:
     """Return a ``ComponentLoggerAdapter`` bound to this project's root.
 
@@ -403,10 +404,7 @@ def print_banner() -> None:
     wider terminals the banner grows; on narrower ones it stays snug.
     """
     title = "LLMServingSim2.0"
-    tagline = (
-        "A Unified Simulator for Heterogeneous Hardware "
-        "and Serving Techniques in LLM"
-    )
+    tagline = "A Unified Simulator for Heterogeneous Hardware and Serving Techniques in LLM"
     _console.rule(f"[sim.heading]{title}[/]", style="sim.rule")
     _console.print(f"[sim.tagline]{tagline}[/]", justify="center")
     _console.rule(style="sim.rule")
@@ -416,6 +414,7 @@ def print_banner() -> None:
 
 def print_input_config(args: Any) -> None:
     """Render the argparse-namespace configuration block used at startup."""
+
     def _inf0(x: Any) -> Any:
         return x if x not in (0, None) else "inf"
 
@@ -498,8 +497,7 @@ def stage(title: str) -> Iterator[None]:
         yield
     except Exception:
         _console.print(
-            f"[logging.level.error]✗[/] {title} "
-            f"([dim]failed after {_t.monotonic() - t0:.1f}s[/])"
+            f"[logging.level.error]✗[/] {title} ([dim]failed after {_t.monotonic() - t0:.1f}s[/])"
         )
         raise
     _console.print(f"[ok]✓[/ok] {title} ([dim]{_t.monotonic() - t0:.1f}s[/])")
@@ -570,9 +568,11 @@ if __name__ == "__main__":
     log.summary("TTFT mean: 7.71 s  |  TPOT mean: 55.8 ms")
     with stage("example work"):
         import time as _t
+
         _t.sleep(0.2)
     with progress("cooking", total=3) as bar:
         for _ in range(3):
             import time as _t
+
             _t.sleep(0.1)
             bar.advance()

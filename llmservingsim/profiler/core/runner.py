@@ -30,10 +30,10 @@ from llmservingsim.profiler.core.writer import (
     sink_for,
 )
 
-
 # ---------------------------------------------------------------------------
 # Path helpers
 # ---------------------------------------------------------------------------
+
 
 def _variant_root(out_root: Path, args: ProfileArgs) -> Path:
     """Build ``<out_root>/<hardware>/<model_path>/<variant>/``.
@@ -56,6 +56,7 @@ def _variant_root(out_root: Path, args: ProfileArgs) -> Path:
 # ---------------------------------------------------------------------------
 # Shot firing + point ingestion (shared between run_full and run_slice)
 # ---------------------------------------------------------------------------
+
 
 def _fire_one_category(
     llm,
@@ -82,9 +83,10 @@ def _fire_one_category(
         if preloaded:
             prior_keys = sink.prior_shot_keys()
             log.info(
-                "%s resume: %d prior rows preloaded, "
-                "%d prior shot keys recognized",
-                category.label, preloaded, len(prior_keys),
+                "%s resume: %d prior rows preloaded, %d prior shot keys recognized",
+                category.label,
+                preloaded,
+                len(prior_keys),
             )
 
     # Materialize shots up-front so the progress bar has a total.
@@ -94,7 +96,8 @@ def _fire_one_category(
     if not all_shots:
         log.warning(
             "category %s produced no shots for tp=%d; skipping",
-            category.label, tp,
+            category.label,
+            tp,
         )
         return
 
@@ -104,7 +107,9 @@ def _fire_one_category(
         if skipped:
             log.info(
                 "%s: skipping %d already-measured shots, firing %d new",
-                category.label, skipped, len(shots),
+                category.label,
+                skipped,
+                len(shots),
             )
     else:
         shots = all_shots
@@ -121,8 +126,7 @@ def _fire_one_category(
         for shot in shots:
             raw = llm.collective_rpc(
                 "fire",
-                args=(shot.as_dict(), catalog_slice, category.name,
-                      args.measurement_iterations),
+                args=(shot.as_dict(), catalog_slice, category.name, args.measurement_iterations),
             )
             # collective_rpc returns one result per worker (one per
             # TP rank). The timings are identical across ranks; take
@@ -147,6 +151,7 @@ def _fire_one_category(
 # Full run
 # ---------------------------------------------------------------------------
 
+
 def run_full(
     arch_path: Path,
     args: ProfileArgs,
@@ -164,8 +169,7 @@ def run_full(
         # Skip TPs with nothing non-tp_stable to do. The post-pass
         # replicate_tp_stable will populate their CSVs from tp1.
         if not arch.has_tp_dependent_work(tp):
-            log.info("TP=%d has only tp_stable work; deferring to replication",
-                     tp)
+            log.info("TP=%d has only tp_stable work; deferring to replication", tp)
             continue
 
         with log.stage(f"TP={tp}  booting vLLM engine"):
@@ -184,8 +188,11 @@ def run_full(
             limits.max_model_len,
             limits.max_num_batched_tokens,
             limits.max_num_seqs,
-            (f" num_experts={limits.num_experts} top_k={limits.top_k}"
-             if limits.num_experts else ""),
+            (
+                f" num_experts={limits.num_experts} top_k={limits.top_k}"
+                if limits.num_experts
+                else ""
+            ),
         )
 
         tp_root = variant_root / f"tp{tp}"
@@ -195,16 +202,22 @@ def run_full(
             if not args.only_skew:
                 for category in categories_for(arch, tp):
                     _fire_one_category(
-                        llm, category, arch, args, limits, tp, tp_root,
+                        llm,
+                        category,
+                        arch,
+                        args,
+                        limits,
+                        tp,
+                        tp_root,
                     )
             else:
-                log.info("only_skew mode: skipping dense / per_seq / "
-                         "attention / moe categories")
+                log.info("only_skew mode: skipping dense / per_seq / attention / moe categories")
             # Skew measurement after all categories — uses the same
             # attention kernel slice but fires shots with non-uniform
             # decode kv distributions. Writes tp_root/skew.csv.
             if not args.skip_skew:
                 from llmservingsim.profiler.core.skew import sample_skew
+
                 sample_skew(llm, arch, args, limits, tp, tp_root)
         finally:
             spin_down(llm, tmpdir)
@@ -226,6 +239,7 @@ def run_full(
 # Slice refresh
 # ---------------------------------------------------------------------------
 
+
 def run_slice(
     arch_path: Path,
     args: ProfileArgs,
@@ -238,23 +252,15 @@ def run_slice(
     variant_root = _variant_root(out_root, args)
 
     if group not in CATEGORY_BY_NAME:
-        raise ValueError(
-            f"unknown group {group!r}; must be one of "
-            f"{sorted(CATEGORY_BY_NAME)}"
-        )
+        raise ValueError(f"unknown group {group!r}; must be one of {sorted(CATEGORY_BY_NAME)}")
     if tp not in args.tp_degrees:
-        raise ValueError(
-            f"tp={tp} is not in the session's tp_degrees ({args.tp_degrees})"
-        )
+        raise ValueError(f"tp={tp} is not in the session's tp_degrees ({args.tp_degrees})")
 
     category_cls = CATEGORY_BY_NAME[group]
     category = category_cls()
 
     if not category.catalog_slice(arch):
-        raise ValueError(
-            f"architecture has no entries in catalog.{group}; "
-            f"nothing to profile"
-        )
+        raise ValueError(f"architecture has no entries in catalog.{group}; nothing to profile")
 
     log.banner(args, variant_root)
     log.info("Slice refresh: tp=%d group=%s", tp, group)
@@ -268,7 +274,13 @@ def run_slice(
 
     try:
         _fire_one_category(
-            llm, category, arch, args, limits, tp, tp_root,
+            llm,
+            category,
+            arch,
+            args,
+            limits,
+            tp,
+            tp_root,
         )
     finally:
         spin_down(llm, tmpdir)

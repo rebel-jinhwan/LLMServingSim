@@ -49,6 +49,7 @@ class TimingSample:
 # Matching
 # ---------------------------------------------------------------------------
 
+
 def _strip_class_name(raw: str) -> str:
     """Turn ``"QKVParallelLinear(in_features=4096, ...)"`` → ``"QKVParallelLinear"``.
 
@@ -102,6 +103,7 @@ def _match_slice(
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
 
 def extract_samples(
     tree: list[dict[str, Any]],

@@ -3,7 +3,6 @@ import re
 from dataclasses import dataclass
 from time import time
 
-
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
@@ -27,9 +26,7 @@ def resolve_run_id(run_id=None):
 
     run_id = str(run_id).strip()
     if run_id in (".", "..") or not _RUN_ID_RE.match(run_id):
-        raise ValueError(
-            "run_id may contain only letters, numbers, '.', '_', and '-'."
-        )
+        raise ValueError("run_id may contain only letters, numbers, '.', '_', and '-'.")
     return run_id
 
 

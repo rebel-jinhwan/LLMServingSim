@@ -17,12 +17,14 @@ def main() -> int:
 
     sg = sub.add_parser("sharegpt", help="ShareGPT -> LLMServingSim JSONL")
     from llmservingsim.workloads.generators.sharegpt import register_args as sg_register
+
     sg_register(sg)
 
     args = parser.parse_args()
 
     if args.generator == "sharegpt":
         from llmservingsim.workloads.generators.sharegpt import run
+
         return run(args)
 
     parser.error(f"Unknown generator: {args.generator}")

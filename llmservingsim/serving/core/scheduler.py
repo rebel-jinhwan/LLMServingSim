@@ -1,18 +1,18 @@
 import bisect
-import pandas as pd
-from time import time
 import csv
 import os
 
-from .request import *
-from .utils import *
-from .controller import *
-from .memory_model import *
-from .graph_generator import *
-from .trace_generator import *
-from .logger import print_markup, print_rule
-from .pim_model import *
 import numpy as np
+
+from .controller import *
+from .graph_generator import *
+from .logger import print_markup, print_rule
+from .memory_model import *
+from .pim_model import *
+from .request import *
+from .trace_generator import *
+from .utils import *
+
 
 # class that shedules request of astra-sim
 class Scheduler:
@@ -30,19 +30,43 @@ class Scheduler:
     had no reason to exist -- and their drifting apart was its own source of bugs.
     """
 
-    def __init__(self, model, node_id, instance_id, max_num_seqs, max_num_batched_tokens,
-                 num_npus, tp_size, pp_size, npu_mem, cpu_mem,
-                 start_npu, pd_type, fp, block_size, req_num,
-                 enable_prefix_caching, enable_prefix_sharing, prefix_pool, prefix_storage,
-                 enable_chunked_prefill=False,
-                 long_prefill_token_threshold=0, cxl_mem=0, ep_size=1, kv_cache_dtype='auto',
-                 npu_memory_utilization=1.0, reserve_full_isl=True):
+    def __init__(
+        self,
+        model,
+        node_id,
+        instance_id,
+        max_num_seqs,
+        max_num_batched_tokens,
+        num_npus,
+        tp_size,
+        pp_size,
+        npu_mem,
+        cpu_mem,
+        start_npu,
+        pd_type,
+        fp,
+        block_size,
+        req_num,
+        enable_prefix_caching,
+        enable_prefix_sharing,
+        prefix_pool,
+        prefix_storage,
+        enable_chunked_prefill=False,
+        long_prefill_token_threshold=0,
+        cxl_mem=0,
+        ep_size=1,
+        kv_cache_dtype="auto",
+        npu_memory_utilization=1.0,
+        reserve_full_isl=True,
+    ):
         self.model = model
         self.config = get_config(model)
         self.node_id = node_id
         self.instance_id = instance_id
         self.max_num_seqs = int(max_num_seqs)
-        self.max_num_batched_tokens = min(max_num_batched_tokens, self.config['max_position_embeddings'])
+        self.max_num_batched_tokens = min(
+            max_num_batched_tokens, self.config["max_position_embeddings"]
+        )
         self.long_prefill_token_threshold = long_prefill_token_threshold
         self.num_npus = num_npus
         self.tp_size = tp_size
@@ -76,11 +100,26 @@ class Scheduler:
         self.recompute_tokens = 0
         self.num_preemptions = 0
 
-        self.memory = MemoryModel(model, instance_id, node_id, num_npus, tp_size, npu_mem, cpu_mem,
-                                  block_size, fp, enable_prefix_caching, enable_prefix_sharing,
-                                  prefix_pool, prefix_storage, cxl_mem, ep_size=ep_size,
-                                  pp_size=pp_size, kv_cache_dtype=kv_cache_dtype,
-                                  npu_memory_utilization=npu_memory_utilization)
+        self.memory = MemoryModel(
+            model,
+            instance_id,
+            node_id,
+            num_npus,
+            tp_size,
+            npu_mem,
+            cpu_mem,
+            block_size,
+            fp,
+            enable_prefix_caching,
+            enable_prefix_sharing,
+            prefix_pool,
+            prefix_storage,
+            cxl_mem,
+            ep_size=ep_size,
+            pp_size=pp_size,
+            kv_cache_dtype=kv_cache_dtype,
+            npu_memory_utilization=npu_memory_utilization,
+        )
         self.kv = self.memory.kv
 
         self.logger = get_logger(self.__class__, node_id=node_id, instance_id=instance_id)
@@ -208,13 +247,13 @@ class Scheduler:
                 break
 
             if self.reserve_full_isl and not self.kv.can_fit_full_sequence(
-                    req, hit_blocks, num_npu_hit, num_lower_hit):
+                req, hit_blocks, num_npu_hit, num_lower_hit
+            ):
                 # Its first chunk would fit but the whole sequence would not, so
                 # admitting it now only defers a preemption. vLLM breaks here.
                 break
 
-            blocks = self.kv.allocate_slots(req, num_new, hit_blocks,
-                                            num_npu_hit, num_lower_hit)
+            blocks = self.kv.allocate_slots(req, num_new, hit_blocks, num_npu_hit, num_lower_hit)
             if blocks is None:
                 # vLLM breaks here: a waiting request never causes a preemption.
                 break
@@ -224,8 +263,12 @@ class Scheduler:
                 # Resuming. Whatever neither tier could return has to be
                 # computed again; with no lower tier that is the whole sequence.
                 self.recompute_tokens += max(0, req.num_tokens_reached - num_computed)
-                self.logger.info("Resuming request #%d (%d of %d tokens recovered)",
-                                 req.id, num_computed, req.num_tokens_reached)
+                self.logger.info(
+                    "Resuming request #%d (%d of %d tokens recovered)",
+                    req.id,
+                    num_computed,
+                    req.num_tokens_reached,
+                )
             req.num_computed_tokens = num_computed
             req.status = RequestStatus.RUNNING
             self.running.append(req)
@@ -323,10 +366,24 @@ class Scheduler:
 
         recall_bytes, write_through_bytes = self.kv.take_traffic()
 
-        batch = Batch(self.get_batch_id(), self.model, total_len, kv_len, q_list, k_list,
-                      num_prefill, num_decode, prefill_q_list, prefill_k_list, decode_k_list,
-                      current, self.kv.npu_used_bytes(), 0, recall_bytes,
-                      pd_kv_send_tokens=pd_kv_send_tokens)
+        batch = Batch(
+            self.get_batch_id(),
+            self.model,
+            total_len,
+            kv_len,
+            q_list,
+            k_list,
+            num_prefill,
+            num_decode,
+            prefill_q_list,
+            prefill_k_list,
+            decode_k_list,
+            current,
+            self.kv.npu_used_bytes(),
+            0,
+            recall_bytes,
+            pd_kv_send_tokens=pd_kv_send_tokens,
+        )
         batch.fired.append(sys)
         batch.requests.extend(req for req, _, _ in scheduled)
         batch.scheduled_tokens = scheduled_tokens
@@ -489,7 +546,7 @@ class Scheduler:
                 f"({self.kv.npu_pool.get_num_free_blocks()} of {self.kv.npu_pool.num_blocks})"
             )
         req.num_computed_tokens = num_computed
-        self.kv.take_traffic()          # a P/D handoff is not a recall
+        self.kv.take_traffic()  # a P/D handoff is not a recall
         self.running.append(req)
 
     def is_request_empty(self):
@@ -509,7 +566,6 @@ class Scheduler:
             mean = np.mean(values) / 1_000_000
             median = np.median(values) / 1_000_000
             p99 = np.percentile(values, 99) / 1_000_000
-            label = title.split()[-1] if title != "Time to First Token" else "TTFT"
             # Map to the metric short-name used in the detail rows.
             short = {
                 "Time to First Token": "TTFT",
@@ -517,9 +573,15 @@ class Scheduler:
                 "Inter-token Latency": "ITL",
             }[title]
             spacing = " " * num_space
-            print_markup(f"Mean {short} (ms){spacing}:                                                     {mean:.2f}")
-            print_markup(f"Median {short} (ms){spacing}:                                                   {median:.2f}")
-            print_markup(f"P99 {short} (ms){spacing}:                                                      {p99:.2f}")
+            print_markup(
+                f"Mean {short} (ms){spacing}:                                                     {mean:.2f}"
+            )
+            print_markup(
+                f"Median {short} (ms){spacing}:                                                   {median:.2f}"
+            )
+            print_markup(
+                f"P99 {short} (ms){spacing}:                                                      {p99:.2f}"
+            )
 
         _render("Time to First Token", ttft_values)
         _render("Time per Output Token (excl. 1st token)", tpot_values)
@@ -528,7 +590,7 @@ class Scheduler:
     # print each request results
     def print_request_result(self):
         # sort in id order
-        self.done.sort(key=lambda x : x.id)
+        self.done.sort(key=lambda x: x.id)
         for i in self.done:
             print(i)
         return
@@ -536,41 +598,57 @@ class Scheduler:
     # save requests information to an output file
     def save_output(self, output_file, is_append=False):
         if not os.path.isabs(output_file):
-            output_file = f'../{output_file}'
+            output_file = f"../{output_file}"
         output_dir = os.path.dirname(output_file)
         if output_dir:
             os.makedirs(output_dir, exist_ok=True)
-        mode = 'a' if is_append else 'w'
-        with open(output_file, mode=mode, newline='') as file:
+        mode = "a" if is_append else "w"
+        with open(output_file, mode=mode, newline="") as file:
             # Initialize the CSV writer
             writer = csv.writer(file)
-            
+
             # Write the column headers
             if not is_append:
-                writer.writerow(['instance id', 'request id', 'model', 'input', 'output', 
-                                'arrival', 'end_time', 'latency', 
-                                'queuing_delay', 'TTFT', 'TPOT', 'ITL'])
-            
+                writer.writerow(
+                    [
+                        "instance id",
+                        "request id",
+                        "model",
+                        "input",
+                        "output",
+                        "arrival",
+                        "end_time",
+                        "latency",
+                        "queuing_delay",
+                        "TTFT",
+                        "TPOT",
+                        "ITL",
+                    ]
+                )
+
             # Write each request's information
             for req in self.done:
-                writer.writerow([
-                    req.instance_id,
-                    req.id,
-                    req.model,
-                    req.input,
-                    req.output - req.input,
-                    req.arrival,
-                    req.end_time,
-                    req.latency,
-                    req.queuing_delay,
-                    req.ttft,
-                    req.tpot,
-                    req.itl
-                ])
+                writer.writerow(
+                    [
+                        req.instance_id,
+                        req.id,
+                        req.model,
+                        req.input,
+                        req.output - req.input,
+                        req.arrival,
+                        req.end_time,
+                        req.latency,
+                        req.queuing_delay,
+                        req.ttft,
+                        req.tpot,
+                        req.itl,
+                    ]
+                )
 
 
 def main():
     pass
+
 
 if __name__ == "__main__":
     main()

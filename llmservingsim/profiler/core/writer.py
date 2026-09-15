@@ -17,24 +17,18 @@ from __future__ import annotations
 
 import csv
 import datetime
-import os
-import platform
-import subprocess
+from collections.abc import Iterable
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import yaml
 
 from llmservingsim.profiler import __version__ as profiler_version
 from llmservingsim.profiler.core import logger as log
 from llmservingsim.profiler.core.categories import (
-    AttentionPoint,
     Category,
-    DensePoint,
-    ExpertPoint,
     Point,
-    SequencePoint,
 )
 from llmservingsim.profiler.core.config import (
     Architecture,
@@ -42,10 +36,10 @@ from llmservingsim.profiler.core.config import (
     architecture_hash,
 )
 
-
 # ---------------------------------------------------------------------------
 # DedupSink — the CSV-producing accumulator
 # ---------------------------------------------------------------------------
+
 
 class DedupSink:
     """Accumulates Points, averages duplicates, flushes a sorted CSV.
@@ -160,10 +154,7 @@ class DedupSink:
         """
         if layer_column in self.key_fields:
             idx = self.key_fields.index(layer_column)
-            return {
-                tuple(v for i, v in enumerate(k) if i != idx)
-                for k in self._bucket.keys()
-            }
+            return {tuple(v for i, v in enumerate(k) if i != idx) for k in self._bucket.keys()}
         return set(self._bucket.keys())
 
     # ------------------------------------------------------------------
@@ -198,10 +189,7 @@ class DedupSink:
         assert self._fieldnames is not None
         header = self._fieldnames.copy()
         # Swap 'microseconds' → 'time_us' for the CSV header.
-        header = [
-            "time_us" if f == "microseconds" else f
-            for f in header
-        ]
+        header = ["time_us" if f == "microseconds" else f for f in header]
 
         with self.out_path.open("w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=header)
@@ -230,6 +218,7 @@ def _format_time_us(v: float) -> str:
 # ---------------------------------------------------------------------------
 # Sink factory per category
 # ---------------------------------------------------------------------------
+
 
 def sink_for(category: Category, out_dir: Path) -> DedupSink:
     """Build a DedupSink pre-configured for a given category's schema."""
@@ -296,8 +285,7 @@ def _geometric_spec(values) -> Any:
     last_ratio = tail[-1] / tail[-2]
     if last_ratio > r0 * 1.02:
         return list(vals)
-    factor = f"x{int(round(r0))}" if abs(r0 - round(r0)) < 1e-3 \
-        else f"x{r0:.3g}"
+    factor = f"x{int(round(r0))}" if abs(r0 - round(r0)) < 1e-3 else f"x{r0:.3g}"
     core = f"{tail[0]}-{tail[-1]} {factor}"
     return core if prefix is None else f"{prefix}, {core}"
 
@@ -319,6 +307,7 @@ def _skew_fit_block(variant_root: Path, tp_degrees: list[int]) -> dict:
     simulator handles both shapes.
     """
     from llmservingsim.profiler.core.fit_alpha import fit_alpha_per_tp
+
     fit = fit_alpha_per_tp(variant_root, tp_degrees)
     if not fit.get("enabled"):
         return fit
@@ -378,37 +367,53 @@ def _write_skew_fit_csv(csv_path: Path, fit_entry: dict) -> None:
         parts = key.split("|")
         if len(parts) != 5 or not parts[0].startswith("pc="):
             # Don't silently drop malformed rows — keep the raw key.
-            rows.append({
-                "pc": "", "n_label": "", "skew_rate_label": "",
-                "kv_big_label": "", "kp_label": "",
-                "alpha": float(alpha),
-                "n_samples": int(counts.get(key, 0)),
-                "raw_key": key,
-            })
+            rows.append(
+                {
+                    "pc": "",
+                    "n_label": "",
+                    "skew_rate_label": "",
+                    "kv_big_label": "",
+                    "kp_label": "",
+                    "alpha": float(alpha),
+                    "n_samples": int(counts.get(key, 0)),
+                    "raw_key": key,
+                }
+            )
             continue
         pc_token, n_label, sr_label, kvb_label, kp_label = parts
         try:
             pc = int(pc_token.split("=", 1)[1])
         except (IndexError, ValueError):
             pc = pc_token
-        rows.append({
-            "pc": pc,
-            "n_label": n_label,
-            "skew_rate_label": sr_label,
-            "kv_big_label": kvb_label,
-            "kp_label": kp_label,
-            "alpha": float(alpha),
-            "n_samples": int(counts.get(key, 0)),
-        })
+        rows.append(
+            {
+                "pc": pc,
+                "n_label": n_label,
+                "skew_rate_label": sr_label,
+                "kv_big_label": kvb_label,
+                "kp_label": kp_label,
+                "alpha": float(alpha),
+                "n_samples": int(counts.get(key, 0)),
+            }
+        )
 
-    rows.sort(key=lambda r: (
-        r["pc"] if isinstance(r["pc"], int) else 1 << 30,
-        r["n_label"], r["skew_rate_label"],
-        r["kv_big_label"], r["kp_label"],
-    ))
+    rows.sort(
+        key=lambda r: (
+            r["pc"] if isinstance(r["pc"], int) else 1 << 30,
+            r["n_label"],
+            r["skew_rate_label"],
+            r["kv_big_label"],
+            r["kp_label"],
+        )
+    )
     fieldnames = [
-        "pc", "n_label", "skew_rate_label", "kv_big_label",
-        "kp_label", "alpha", "n_samples",
+        "pc",
+        "n_label",
+        "skew_rate_label",
+        "kv_big_label",
+        "kp_label",
+        "alpha",
+        "n_samples",
     ]
     # Preserve the optional raw_key column if any row needed it.
     if any("raw_key" in r for r in rows):
@@ -431,11 +436,12 @@ def _skew_meta_block(args) -> dict:
     if args.skip_skew:
         return {"enabled": False}
     # Import lazily to avoid a circular profiler import at module load.
-    from llmservingsim.profiler.core.skew import _build_grid, _SKEW_REP
+    from llmservingsim.profiler.core.skew import _SKEW_REP, _build_grid
 
     class _FakeLimits:
         max_num_batched_tokens = args.max_num_batched_tokens or 2048
         max_num_seqs = args.max_num_seqs or 256
+
     grid = _build_grid(args, _FakeLimits())
     return {
         "enabled": True,
@@ -467,18 +473,24 @@ def _attention_grid_spec(args, effective_mnbt: int, effective_msq: int) -> dict:
     walked during profiling.
     """
     from llmservingsim.profiler.core.categories import (
-        _geometric_grid, _ATTN_CHUNK_START,
-        _ATTN_N_DECODE_START, _ATTN_KV_START,
+        _ATTN_CHUNK_START,
+        _ATTN_KV_START,
+        _ATTN_N_DECODE_START,
+        _geometric_grid,
     )
+
     chunks = _geometric_grid(
-        effective_mnbt, _ATTN_CHUNK_START,
+        effective_mnbt,
+        _ATTN_CHUNK_START,
         factor=args.attention_chunk_factor,
     )
     n_dec = _geometric_grid(
-        effective_msq, _ATTN_N_DECODE_START,
+        effective_msq,
+        _ATTN_N_DECODE_START,
     )
     kv = _geometric_grid(
-        args.attention_max_kv, _ATTN_KV_START,
+        args.attention_max_kv,
+        _ATTN_KV_START,
         factor=args.attention_kv_factor,
     )
     return {
@@ -508,10 +520,9 @@ def persist_meta(
     # and any human inspection see the user-intended cap.
     engine_effective = dict(engine_kwargs_used)
     try:
-        engine_effective["max_num_batched_tokens"] = (
-            int(engine_effective["max_num_batched_tokens"])
-            - int(engine_effective["max_num_seqs"])
-        )
+        engine_effective["max_num_batched_tokens"] = int(
+            engine_effective["max_num_batched_tokens"]
+        ) - int(engine_effective["max_num_seqs"])
     except (KeyError, TypeError, ValueError):
         pass
 
@@ -570,11 +581,11 @@ class _CompactDumper(yaml.SafeDumper):
 
 
 def _represent_list(dumper, data):
-    flow = all(
-        isinstance(x, (int, float, str, bool, type(None))) for x in data
-    )
+    flow = all(isinstance(x, (int, float, str, bool, type(None))) for x in data)
     return dumper.represent_sequence(
-        "tag:yaml.org,2002:seq", data, flow_style=flow,
+        "tag:yaml.org,2002:seq",
+        data,
+        flow_style=flow,
     )
 
 
@@ -585,6 +596,7 @@ _CompactDumper.add_representer(tuple, _represent_list)
 # ---------------------------------------------------------------------------
 # TP-stable replication pass
 # ---------------------------------------------------------------------------
+
 
 def replicate_tp_stable(
     variant_root: Path,
@@ -602,12 +614,8 @@ def replicate_tp_stable(
         log.warning("tp1/ missing; skipping tp_stable replication")
         return
 
-    stable_dense = {
-        name for name, e in arch.catalog.dense.items() if e.tp_stable
-    }
-    stable_seq = {
-        name for name, e in arch.catalog.per_sequence.items() if e.tp_stable
-    }
+    stable_dense = {name for name, e in arch.catalog.dense.items() if e.tp_stable}
+    stable_seq = {name for name, e in arch.catalog.per_sequence.items() if e.tp_stable}
 
     for tp in tp_degrees:
         if tp == 1:
@@ -662,20 +670,16 @@ def _replicate_layer_file(
         merged = src_stable
 
     # Re-sort for deterministic output.
-    merged.sort(key=lambda r: tuple(
-        int(r[k]) if k != "layer" else r[k]
-        for k in key_fields
-    ))
+    merged.sort(key=lambda r: tuple(int(r[k]) if k != "layer" else r[k] for k in key_fields))
 
     _write_csv_rows(dst, merged)
-    log.debug(
-        "replicated %d tp_stable rows into %s", len(src_stable), dst
-    )
+    log.debug("replicated %d tp_stable rows into %s", len(src_stable), dst)
 
 
 # ---------------------------------------------------------------------------
 # Tiny CSV helpers (we don't want pandas here just for read/write)
 # ---------------------------------------------------------------------------
+
 
 def _read_csv_rows(path: Path) -> list[dict[str, str]]:
     with path.open("r", encoding="utf-8") as f:
@@ -698,9 +702,11 @@ def _write_csv_rows(path: Path, rows: Iterable[dict[str, Any]]) -> None:
 # Environment probes for meta.yaml
 # ---------------------------------------------------------------------------
 
+
 def _vllm_version() -> str:
     try:
         import vllm
+
         return getattr(vllm, "__version__", "unknown")
     except ImportError:
         return "unknown"
@@ -710,6 +716,7 @@ def _cuda_version() -> str:
     # torch.version.cuda is the runtime CUDA version linked into torch.
     try:
         import torch
+
         return torch.version.cuda or "unknown"
     except Exception:
         return "unknown"
@@ -718,6 +725,7 @@ def _cuda_version() -> str:
 def _gpu_name() -> str:
     try:
         import torch
+
         if torch.cuda.is_available():
             return torch.cuda.get_device_name(0)
     except Exception:
@@ -726,9 +734,7 @@ def _gpu_name() -> str:
 
 
 def _utcnow_iso() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).isoformat(
-        timespec="seconds"
-    )
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
 
 
 def _stringify(obj: Any) -> Any:

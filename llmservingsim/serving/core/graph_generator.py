@@ -2,9 +2,9 @@ import glob
 import hashlib
 import os
 from collections import OrderedDict
-from time import time
-from .request import *
+
 from .logger import get_logger
+from .request import *
 from .run_paths import input_path
 from .trace_generator import indexed_cols, write_trace
 
@@ -32,7 +32,7 @@ logger = get_logger("GraphGenerator")
 # ASTRA-Sim is handed one folder per wave and every member reads its own
 # `llm.<npu>.et` out of it.
 # ----------------------------------------------------------------------
-_ET_CACHE = OrderedDict()          # key -> [(basename, bytes), ...]
+_ET_CACHE = OrderedDict()  # key -> [(basename, bytes), ...]
 _ET_CACHE_BYTES = 0
 _ET_CACHE_MAX_BYTES = 64 * 1024 * 1024
 _ET_CACHE_STATS = {"hit": 0, "miss": 0, "skipped": 0}
@@ -99,6 +99,7 @@ def _cache_store(key, paths):
         _, evicted = _ET_CACHE.popitem(last=False)
         _ET_CACHE_BYTES -= sum(len(b) for _, b in evicted)
 
+
 # Chakra's LLMConverter, imported once and reused for the whole run.
 #
 # This used to be `python -m chakra.src.converter.converter LLM ...` in a
@@ -131,20 +132,35 @@ def _get_llm_converter():
     global _LLMConverter
     if _LLMConverter is None:
         from chakra.src.converter.llm_converter import LLMConverter
+
         _LLMConverter = LLMConverter
     return _LLMConverter
 
 
-def generate_graph(batch, hardware, num_npus, node_id=0, instance_id=0, npu_offset=0, enable_local_offloading=False, event=False, workload_name=None, inputs_root=None, save_trace_text=False, *, trace):
+def generate_graph(
+    batch,
+    hardware,
+    num_npus,
+    node_id=0,
+    instance_id=0,
+    npu_offset=0,
+    enable_local_offloading=False,
+    event=False,
+    workload_name=None,
+    inputs_root=None,
+    save_trace_text=False,
+    *,
+    trace,
+):
 
     cwd = os.getcwd()
     if inputs_root is None:
         inputs_root = os.path.join(cwd, "inputs")
 
     if event:
-        file_name = 'event_handler'
+        file_name = "event_handler"
     else:
-        file_name = f'{hardware}/{batch.model}/instance{instance_id}_batch{batch.batch_id}'
+        file_name = f"{hardware}/{batch.model}/instance{instance_id}_batch{batch.batch_id}"
 
     # For DP groups, all instances write .et files to a shared workload folder
     output_name = workload_name if workload_name else file_name
@@ -159,15 +175,17 @@ def generate_graph(batch, hardware, num_npus, node_id=0, instance_id=0, npu_offs
     if save_trace_text:
         write_trace(trace)
 
-    cache_key = (_rows_digest(trace), num_npus, npu_offset,
-                 enable_local_offloading)
+    cache_key = (_rows_digest(trace), num_npus, npu_offset, enable_local_offloading)
 
     cached = _ET_CACHE.get(cache_key)
     if cached is not None:
         _ET_CACHE.move_to_end(cache_key)
         _ET_CACHE_STATS["hit"] += 1
-        logger.debug("Graph cache hit for %s", trace_path,
-                     extra={"node_id": node_id, "instance_id": instance_id})
+        logger.debug(
+            "Graph cache hit for %s",
+            trace_path,
+            extra={"node_id": node_id, "instance_id": instance_id},
+        )
         for name, blob in cached:
             with open(os.path.join(workload_dir, name), "wb") as g:
                 g.write(blob)
@@ -176,10 +194,18 @@ def generate_graph(batch, hardware, num_npus, node_id=0, instance_id=0, npu_offs
 
     before = _et_names(workload_dir)
 
-    logger.debug("Converting graph: %s -> %s", trace_path, output_path,
-                 extra={"node_id": node_id, "instance_id": instance_id})
+    logger.debug(
+        "Converting graph: %s -> %s",
+        trace_path,
+        output_path,
+        extra={"node_id": node_id, "instance_id": instance_id},
+    )
     converter = _get_llm_converter()(
-        trace_path, output_path, num_npus, npu_offset, enable_local_offloading,
+        trace_path,
+        output_path,
+        num_npus,
+        npu_offset,
+        enable_local_offloading,
     )
     converter.convert_rows(trace.header_line, indexed_cols(trace.rows))
 

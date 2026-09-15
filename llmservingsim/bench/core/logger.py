@@ -23,11 +23,10 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 import tempfile
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Iterator
 
 from rich.console import Console
 from rich.panel import Panel
@@ -42,18 +41,19 @@ from rich.progress import (
 )
 from rich.theme import Theme
 
-
 # --- module-level singletons ------------------------------------------------
 
-_THEME = Theme({
-    "logging.level.info":    "cyan",
-    "logging.level.warning": "yellow",
-    "logging.level.error":   "red",
-    "logging.level.debug":   "dim",
-    "ok":                    "green bold",
-    "bench.rule":            "magenta",
-    "bench.banner":          "magenta bold",
-})
+_THEME = Theme(
+    {
+        "logging.level.info": "cyan",
+        "logging.level.warning": "yellow",
+        "logging.level.error": "red",
+        "logging.level.debug": "dim",
+        "ok": "green bold",
+        "bench.rule": "magenta",
+        "bench.banner": "magenta bold",
+    }
+)
 
 # stdout, soft-wrapped, no forced terminal — Rich auto-detects TTY.
 _console = Console(theme=_THEME, soft_wrap=True)
@@ -63,6 +63,7 @@ _configured = False
 
 
 # --- public API -------------------------------------------------------------
+
 
 def configure(level: int | str = logging.INFO) -> None:
     """Initialize the bench logger.
@@ -83,6 +84,7 @@ def configure(level: int | str = logging.INFO) -> None:
 
     if not _configured:
         from rich.logging import RichHandler
+
         handler = RichHandler(
             console=_console,
             show_time=True,
@@ -96,8 +98,15 @@ def configure(level: int | str = logging.INFO) -> None:
         _configured = True
 
     vllm_level = logging.DEBUG if level <= logging.DEBUG else logging.ERROR
-    for name in ("vllm", "vllm.engine", "vllm.worker", "vllm.executor",
-                 "vllm.config", "vllm.model_executor", "vllm.distributed"):
+    for name in (
+        "vllm",
+        "vllm.engine",
+        "vllm.worker",
+        "vllm.executor",
+        "vllm.config",
+        "vllm.model_executor",
+        "vllm.distributed",
+    ):
         logging.getLogger(name).setLevel(vllm_level)
 
 
@@ -130,8 +139,7 @@ def capture_stdio() -> Iterator[None]:
             buf.seek(0)
             captured = buf.read().decode(errors="replace")
             if captured.strip():
-                _logger.error("Captured vLLM stdio before failure:\n%s",
-                              captured)
+                _logger.error("Captured vLLM stdio before failure:\n%s", captured)
             raise
     finally:
         os.dup2(saved_stdout, 1)
@@ -142,6 +150,7 @@ def capture_stdio() -> Iterator[None]:
 
 
 # --- convenience wrappers ---------------------------------------------------
+
 
 def info(msg: str, *args, **kw) -> None:
     _logger.info(msg, *args, **kw)
@@ -166,6 +175,7 @@ def success(msg: str, *args, **kw) -> None:
 
 # --- high-level display helpers --------------------------------------------
 
+
 def print_rule(label: str = "") -> None:
     """Render a Rich rule (horizontal divider) on the console."""
     _console.rule(label, style="bench.rule")
@@ -174,8 +184,7 @@ def print_rule(label: str = "") -> None:
 def print_banner(title: str = "bench", subtitle: str | None = None) -> None:
     """Render a one-line bench banner."""
     panel = Panel(
-        f"[bench.banner]{title}[/bench.banner]"
-        + (f"\n{subtitle}" if subtitle else ""),
+        f"[bench.banner]{title}[/bench.banner]" + (f"\n{subtitle}" if subtitle else ""),
         border_style="bench.rule",
         expand=False,
     )
@@ -202,7 +211,7 @@ def stage(title: str) -> Iterator[None]:
 
 
 @contextmanager
-def progress(label: str, total: int) -> Iterator["_Bar"]:
+def progress(label: str, total: int) -> Iterator[_Bar]:
     """Render a Rich progress bar for a known-total operation.
 
     The yielded ``_Bar`` exposes one method, ``advance(n=1)``, so call

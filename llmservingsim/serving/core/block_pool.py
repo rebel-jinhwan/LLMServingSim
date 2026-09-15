@@ -55,8 +55,7 @@ class KVCacheBlock:
     :class:`FreeKVCacheBlockQueue`; nothing else may touch them.
     """
 
-    __slots__ = ("block_id", "ref_cnt", "block_hash",
-                 "prev_free_block", "next_free_block")
+    __slots__ = ("block_id", "ref_cnt", "block_hash", "prev_free_block", "next_free_block")
 
     def __init__(self, block_id):
         self.block_id = block_id
@@ -72,8 +71,10 @@ class KVCacheBlock:
     def __repr__(self):
         prev_id = self.prev_free_block.block_id if self.prev_free_block else None
         next_id = self.next_free_block.block_id if self.next_free_block else None
-        return (f"KVCacheBlock(block_id={self.block_id}, ref_cnt={self.ref_cnt}, "
-                f"block_hash={self.block_hash}, prev={prev_id}, next={next_id})")
+        return (
+            f"KVCacheBlock(block_id={self.block_id}, ref_cnt={self.ref_cnt}, "
+            f"block_hash={self.block_hash}, prev={prev_id}, next={next_id})"
+        )
 
 
 class FreeKVCacheBlockQueue:
@@ -147,8 +148,9 @@ class FreeKVCacheBlockQueue:
     def remove(self, block):
         """Take ``block`` out of the middle of the list."""
         if block.prev_free_block is None or block.next_free_block is None:
-            raise RuntimeError(f"[FreeKVCacheBlockQueue] remove() on a block that "
-                               f"is not in the free list: {block}")
+            raise RuntimeError(
+                f"[FreeKVCacheBlockQueue] remove() on a block that is not in the free list: {block}"
+            )
         block.prev_free_block.next_free_block = block.next_free_block
         block.next_free_block.prev_free_block = block.prev_free_block
         block.prev_free_block = block.next_free_block = None
@@ -203,8 +205,10 @@ class PrefixCacheStats:
         if self.total_requested_tokens == 0:
             return ""
         ratio = (self.total_hit_tokens / self.total_requested_tokens) * 100
-        return (f", Prefix Cache Hit ratio {ratio:.2f} %, "
-                f"({self.total_hit_tokens} / {self.total_requested_tokens})")
+        return (
+            f", Prefix Cache Hit ratio {ratio:.2f} %, "
+            f"({self.total_hit_tokens} / {self.total_requested_tokens})"
+        )
 
 
 class BlockPool:
@@ -224,8 +228,16 @@ class BlockPool:
             ``--no-enable-prefix-caching`` means in vLLM.
     """
 
-    def __init__(self, tier, num_blocks, block_size, bytes_per_block,
-                 enable_caching=True, node_id=None, instance_id=None):
+    def __init__(
+        self,
+        tier,
+        num_blocks,
+        block_size,
+        bytes_per_block,
+        enable_caching=True,
+        node_id=None,
+        instance_id=None,
+    ):
         if not isinstance(num_blocks, int) or num_blocks <= 0:
             raise ValueError(
                 f"[BlockPool] {tier}: num_blocks must be a positive int, got {num_blocks}"
@@ -385,9 +397,7 @@ class BlockPool:
         one ledger; there is no second counter to keep in sync.
         """
         pinned = self.used_blocks
-        cached_and_free = sum(
-            1 for b in self.cached_block_hash_to_block.values() if b.ref_cnt == 0
-        )
+        cached_and_free = sum(1 for b in self.cached_block_hash_to_block.values() if b.ref_cnt == 0)
         return (pinned + cached_and_free) * self.bytes_per_block
 
     def usage(self):
@@ -409,10 +419,12 @@ class BlockPool:
         self.free_block_queue = FreeKVCacheBlockQueue(self.blocks)
 
     def __repr__(self):
-        return (f"BlockPool(tier={self.tier}, num_blocks={self.num_blocks}, "
-                f"free={self.get_num_free_blocks()}, "
-                f"cached={len(self.cached_block_hash_to_block)}, "
-                f"block_size={self.block_size})")
+        return (
+            f"BlockPool(tier={self.tier}, num_blocks={self.num_blocks}, "
+            f"free={self.get_num_free_blocks()}, "
+            f"cached={len(self.cached_block_hash_to_block)}, "
+            f"block_size={self.block_size})"
+        )
 
 
 def _selftest():
@@ -420,8 +432,9 @@ def _selftest():
     KB = 1024
 
     def new_pool(n=8, caching=True):
-        return BlockPool(Device.NPU, n, block_size=16,
-                         bytes_per_block=16 * 128 * KB, enable_caching=caching)
+        return BlockPool(
+            Device.NPU, n, block_size=16, bytes_per_block=16 * 128 * KB, enable_caching=caching
+        )
 
     # allocate / free round-trip restores the free count
     p = new_pool()
@@ -498,8 +511,9 @@ def _selftest():
         raise AssertionError("over-allocation must raise")
 
     # a lower tier at a coarser granularity is the same class
-    cpu = BlockPool(Device.CPU, 4, block_size=256,
-                    bytes_per_block=256 * 128 * KB, enable_caching=True)
+    cpu = BlockPool(
+        Device.CPU, 4, block_size=256, bytes_per_block=256 * 128 * KB, enable_caching=True
+    )
     assert cpu.block_size == 16 * 16
     assert cpu.bytes_per_block == 16 * p.bytes_per_block
 
@@ -511,7 +525,7 @@ def _selftest():
     for h in (1002, 1003, 1004):
         assert cpu.cache_copy(h) is True
     assert len(cpu.cached_block_hash_to_block) == 4
-    assert cpu.cache_copy(1005) is True                  # forces an eviction
+    assert cpu.cache_copy(1005) is True  # forces an eviction
     assert cpu.get_cached_block(1001) is None, "oldest copy dropped first"
     assert len(cpu.cached_block_hash_to_block) == 4
 

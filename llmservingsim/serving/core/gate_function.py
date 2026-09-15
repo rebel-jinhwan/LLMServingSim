@@ -1,14 +1,16 @@
 import random
 from dataclasses import dataclass
+
 from .logger import get_logger
 
 
 @dataclass
 class RoutingResult:
     """Per-EP-rank routing information for a single MoE layer."""
-    local_tokens: list     # [rank] -> token count routed to this rank
-    activated_experts: list # [rank] -> number of distinct experts activated on this rank
-    source_tokens: list    # [rank] -> token count originating from this rank before dispatch
+
+    local_tokens: list  # [rank] -> token count routed to this rank
+    activated_experts: list  # [rank] -> number of distinct experts activated on this rank
+    source_tokens: list  # [rank] -> token count originating from this rank before dispatch
 
 
 class GateRouter:
@@ -99,8 +101,13 @@ class GateRouter:
 
         self.logger.info(
             "layer=%d policy=%s E=%d k=%d batch=%s tokens=%d assigned=%s",
-            layer_num, self.routing_policy, self.E, self.k,
-            batch_id, total_len, counts,
+            layer_num,
+            self.routing_policy,
+            self.E,
+            self.k,
+            batch_id,
+            total_len,
+            counts,
         )
         return counts
 
@@ -128,7 +135,9 @@ class GateRouter:
 
         if self.routing_policy == "BALANCED":
             local_tokens, activated_counts = self._balanced_route_ep(
-                total_len, ep_size, source_tokens,
+                total_len,
+                ep_size,
+                source_tokens,
             )
         else:
             local_tokens = [0] * ep_size
@@ -149,8 +158,15 @@ class GateRouter:
 
         self.logger.info(
             "layer=%d policy=%s E=%d k=%d ep=%d batch=%s tokens=%d local=%s activated=%s",
-            layer_num, self.routing_policy, self.E, self.k, ep_size,
-            batch_id, total_len, local_tokens, activated_counts,
+            layer_num,
+            self.routing_policy,
+            self.E,
+            self.k,
+            ep_size,
+            batch_id,
+            total_len,
+            local_tokens,
+            activated_counts,
         )
 
         return RoutingResult(

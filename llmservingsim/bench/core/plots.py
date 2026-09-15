@@ -11,20 +11,26 @@ directory; plus a plain-text summary table:
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 # matplotlib is imported lazily inside each helper so the module is
 # importable in environments without matplotlib (e.g. CLI --help).
 
 
-def plot_throughput(output_dir: Path, prefix: str,
-                    bench_t: Sequence[float], bench_prompt: Sequence[float],
-                    bench_gen: Sequence[float],
-                    sim_t: Sequence[float], sim_prompt: Sequence[float],
-                    sim_gen: Sequence[float],
-                    title: str) -> Path:
+def plot_throughput(
+    output_dir: Path,
+    prefix: str,
+    bench_t: Sequence[float],
+    bench_prompt: Sequence[float],
+    bench_gen: Sequence[float],
+    sim_t: Sequence[float],
+    sim_prompt: Sequence[float],
+    sim_gen: Sequence[float],
+    title: str,
+) -> Path:
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
@@ -49,13 +55,19 @@ def plot_throughput(output_dir: Path, prefix: str,
     return out
 
 
-def plot_requests(output_dir: Path, prefix: str,
-                  bench_t: Sequence[float], bench_running: Sequence[int],
-                  bench_waiting: Sequence[int],
-                  sim_t: Sequence[float], sim_running: Sequence[int],
-                  sim_waiting: Sequence[int],
-                  title: str) -> Path:
+def plot_requests(
+    output_dir: Path,
+    prefix: str,
+    bench_t: Sequence[float],
+    bench_running: Sequence[int],
+    bench_waiting: Sequence[int],
+    sim_t: Sequence[float],
+    sim_running: Sequence[int],
+    sim_waiting: Sequence[int],
+    title: str,
+) -> Path:
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
@@ -80,12 +92,19 @@ def plot_requests(output_dir: Path, prefix: str,
     return out
 
 
-def plot_latency_cdfs(output_dir: Path, prefix: str,
-                      bench_ttft: Sequence[float], sim_ttft: Sequence[float],
-                      bench_tpot: Sequence[float], sim_tpot: Sequence[float],
-                      bench_latency: Sequence[float], sim_latency: Sequence[float],
-                      title: str) -> Path:
+def plot_latency_cdfs(
+    output_dir: Path,
+    prefix: str,
+    bench_ttft: Sequence[float],
+    sim_ttft: Sequence[float],
+    bench_tpot: Sequence[float],
+    sim_tpot: Sequence[float],
+    bench_latency: Sequence[float],
+    sim_latency: Sequence[float],
+    title: str,
+) -> Path:
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
@@ -93,9 +112,11 @@ def plot_latency_cdfs(output_dir: Path, prefix: str,
 
     for ax, (label, va, sa) in zip(
         axes,
-        [("TTFT (ms)", bench_ttft, sim_ttft),
-         ("TPOT (ms)", bench_tpot, sim_tpot),
-         ("Latency (ms)", bench_latency, sim_latency)],
+        [
+            ("TTFT (ms)", bench_ttft, sim_ttft),
+            ("TPOT (ms)", bench_tpot, sim_tpot),
+            ("Latency (ms)", bench_latency, sim_latency),
+        ],
     ):
         for series, name, color, style in [
             (va, "vLLM", "C0", "-"),
@@ -115,28 +136,32 @@ def plot_latency_cdfs(output_dir: Path, prefix: str,
     return out
 
 
-def write_summary(output_dir: Path, prefix: str,
-                  bench_ttft: Sequence[float], sim_ttft: Sequence[float],
-                  bench_tpot: Sequence[float], sim_tpot: Sequence[float],
-                  bench_latency: Sequence[float], sim_latency: Sequence[float]
-                  ) -> Path:
+def write_summary(
+    output_dir: Path,
+    prefix: str,
+    bench_ttft: Sequence[float],
+    sim_ttft: Sequence[float],
+    bench_tpot: Sequence[float],
+    sim_tpot: Sequence[float],
+    bench_latency: Sequence[float],
+    sim_latency: Sequence[float],
+) -> Path:
     """Write a plain-text TTFT/TPOT/Latency table with sim-vs-vLLM diff%."""
     lines: list[str] = []
     header = f"{'Metric':<25}{'vLLM':>12}{'Sim':>12}{'Diff%':>10}"
     lines.append(header)
     lines.append("-" * len(header))
 
-    for name, va, sa in [("TTFT", bench_ttft, sim_ttft),
-                         ("TPOT", bench_tpot, sim_tpot),
-                         ("Latency", bench_latency, sim_latency)]:
+    for name, va, sa in [
+        ("TTFT", bench_ttft, sim_ttft),
+        ("TPOT", bench_tpot, sim_tpot),
+        ("Latency", bench_latency, sim_latency),
+    ]:
         for stat_label, fn in _STATS:
             v = fn(va) if va else float("nan")
             s = fn(sa) if sa else float("nan")
             diff = (s - v) / v * 100.0 if v else float("nan")
-            lines.append(
-                f"{name + ' ' + stat_label:<25}"
-                f"{v:>12.1f}{s:>12.1f}{diff:>+9.1f}%"
-            )
+            lines.append(f"{name + ' ' + stat_label:<25}{v:>12.1f}{s:>12.1f}{diff:>+9.1f}%")
         lines.append("")
 
     out = output_dir / _name(prefix, "summary.txt")
@@ -147,6 +172,7 @@ def write_summary(output_dir: Path, prefix: str,
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
+
 
 def _cdf(series: Sequence[float]) -> tuple[list[float], list[float]]:
     if not series:

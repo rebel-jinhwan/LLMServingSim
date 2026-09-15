@@ -35,6 +35,7 @@ Downstream pipeline:
     and reconstructs the same bucket key for whatever runtime batch
     it's evaluating.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -46,7 +47,6 @@ from llmservingsim.profiler.core import logger as log
 from llmservingsim.profiler.core.config import Architecture, ProfileArgs
 from llmservingsim.profiler.core.hooks.batch import Shot
 from llmservingsim.profiler.core.hooks.timings import TimingSample
-
 
 # ---------------------------------------------------------------------------
 # Grid design
@@ -87,14 +87,14 @@ _RATIO_VALS = (0.0625, 0.125, 0.25, 0.5, 0.75, 0.9)
 # regime entirely — e.g. n=128 with ratio=0.0625 already gives nb=8,
 # never touching nb=1..4 where alpha peaks physically.
 _NB_ABSOLUTE = (1, 2, 3, 4)
-_SKEW_REP   = 4.0
+_SKEW_REP = 4.0
 # kp axis grows from ``_KP_START`` up to ``AMK // 2`` so short
 # histories (512, 1024) get representation alongside the longer ones.
 _KP_START = 512
 
 # Tier 2 skew sweep — physical values, fixed.
 _T2_SKEW_MIXED = [1.5, 2.0, 4.0, 8.0, 16.0]
-_T2_SKEW_PURE  = [2.0, 4.0, 8.0, 16.0]
+_T2_SKEW_PURE = [2.0, 4.0, 8.0, 16.0]
 
 
 def _doubling(start: int, max_val: int, factor: float = 2.0) -> list[int]:
@@ -134,7 +134,9 @@ def _build_grid(args: ProfileArgs, limits) -> dict:
     MSQ = args.max_num_seqs or limits.max_num_seqs
 
     n_vals = _doubling(
-        2, min(MSQ, limits.max_num_seqs), factor=args.skew_n_factor,
+        2,
+        min(MSQ, limits.max_num_seqs),
+        factor=args.skew_n_factor,
     )
     if not n_vals:
         n_vals = [1]
@@ -193,10 +195,10 @@ def _tier2_pivots(grid: dict) -> list[tuple]:
     return pivots
 
 
-
 # ---------------------------------------------------------------------------
 # Case definition
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class SkewCase:
@@ -230,20 +232,27 @@ def _feasible(case: SkewCase, limits, args: ProfileArgs) -> bool:
     AMK = args.attention_max_kv
     MNBT = args.max_num_batched_tokens or limits.max_num_batched_tokens
     MSQ = limits.max_num_seqs
-    if case.pc > MNBT + 1: return False
-    if case.kvs > AMK + 1: return False
-    if case.kv_big > AMK + 1: return False
-    if case.kp > AMK + 1: return False
+    if case.pc > MNBT + 1:
+        return False
+    if case.kvs > AMK + 1:
+        return False
+    if case.kv_big > AMK + 1:
+        return False
+    if case.kp > AMK + 1:
+        return False
     # Sum bound, mirrored from AttentionCategory: the shot bypasses the
     # vLLM scheduler via assemble_scheduler_output, so MNBT is advisory.
     # Allow pc + n up to MNBT + MSQ so pc=MNBT can still pair with the
     # full n-axis range. The strict n_seqs < MSQ check further down is
     # the hard cap that actually protects vLLM's input_batch buffer.
-    if case.pc + case.n > MNBT + MSQ: return False
+    if case.pc + case.n > MNBT + MSQ:
+        return False
 
     MML = limits.max_model_len
-    if case.kv_big + 1 > MML: return False
-    if case.pc > 0 and case.pc + case.kp + 1 > MML: return False
+    if case.kv_big + 1 > MML:
+        return False
+    if case.pc > 0 and case.pc + case.kp + 1 > MML:
+        return False
     # n_seqs vs max_num_seqs — mirrored from AttentionCategory so the
     # skew sweep can fire the same (n = MSQ) corner the uniform grid
     # reaches. vLLM V1's ``input_batch`` pre-allocation sizes to MSQ
@@ -251,10 +260,14 @@ def _feasible(case: SkewCase, limits, args: ProfileArgs) -> bool:
     # n=MSQ therefore fires; mixed-regime n=MSQ (which would need
     # MSQ+1 requests with the prefill case) is still filtered.
     n_seqs = case.n + (1 if case.pc > 0 else 0)
-    if n_seqs > limits.max_num_seqs: return False
+    if n_seqs > limits.max_num_seqs:
+        return False
 
     BS = 16
-    def aligned(t): return ((t + BS - 1) // BS) * BS
+
+    def aligned(t):
+        return ((t + BS - 1) // BS) * BS
+
     big_blk = aligned(case.kv_big) * case.nb
     small_blk = aligned(case.kvs) * (case.n - case.nb)
     pfx_blk = aligned(case.pc + case.kp) if case.pc > 0 else 0
@@ -287,15 +300,14 @@ def _build_cases(args: ProfileArgs, limits) -> list[SkewCase]:
                     if pc == 0 and kp != 0:
                         continue
                     for kvs in grid["kvs"]:
-                        c = SkewCase(n=n, ratio=r, skew=_SKEW_REP,
-                                     pc=pc, kp=kp, kvs=kvs)
+                        c = SkewCase(n=n, ratio=r, skew=_SKEW_REP, pc=pc, kp=kp, kvs=kvs)
                         if _feasible(c, limits, args):
                             cases.append(c)
 
     # Tier 2 — skew-axis sweep at a few pivots. This is the only
     # source of skew ≠ _SKEW_REP samples in the dataset; keep even
     # though T1 covers the skew=4 baseline.
-    for (n, r, pc, kp, kvs, skews) in _tier2_pivots(grid):
+    for n, r, pc, kp, kvs, skews in _tier2_pivots(grid):
         for sk in skews:
             c = SkewCase(n=n, ratio=r, skew=sk, pc=pc, kp=kp, kvs=kvs)
             if _feasible(c, limits, args):
@@ -317,38 +329,41 @@ def _build_cases(args: ProfileArgs, limits) -> list[SkewCase]:
 # Measurement
 # ---------------------------------------------------------------------------
 
+
 def _measure(llm, reqs, slice_, iters: int) -> float:
     shot = Shot(requests=[tuple(r) for r in reqs])
-    raw = llm.collective_rpc(
-        "fire", args=(shot.as_dict(), slice_, "attention", iters))
-    timings = [TimingSample(layer=d["layer"],
-                            microseconds=float(d["microseconds"]))
-               for d in raw[0]]
+    raw = llm.collective_rpc("fire", args=(shot.as_dict(), slice_, "attention", iters))
+    timings = [
+        TimingSample(layer=d["layer"], microseconds=float(d["microseconds"])) for d in raw[0]
+    ]
     return sum(t.microseconds for t in timings if t.layer == "attention")
 
 
 def _measure_case(llm, case: SkewCase, slice_, iters: int) -> dict:
     base = [(case.pc, case.kp)] if case.pc > 0 else []
     uni_mean_reqs = base + [(1, case.kv_mean)] * case.n
-    uni_max_reqs  = base + [(1, case.kv_big)]  * case.n
-    skew_reqs     = base + [(1, case.kv_big)] * case.nb + \
-                    [(1, case.kvs)] * (case.n - case.nb)
+    uni_max_reqs = base + [(1, case.kv_big)] * case.n
+    skew_reqs = base + [(1, case.kv_big)] * case.nb + [(1, case.kvs)] * (case.n - case.nb)
 
     t_mean = _measure(llm, uni_mean_reqs, slice_, iters)
-    t_max  = _measure(llm, uni_max_reqs,  slice_, iters)
-    t_skew = _measure(llm, skew_reqs,     slice_, iters)
+    t_max = _measure(llm, uni_max_reqs, slice_, iters)
+    t_skew = _measure(llm, skew_reqs, slice_, iters)
 
-    alpha = ((t_skew - t_mean) / (t_max - t_mean)
-             if t_max > t_mean else float("nan"))
+    alpha = (t_skew - t_mean) / (t_max - t_mean) if t_max > t_mean else float("nan")
 
     return {
         "regime": "pure" if case.pc == 0 else "mixed",
-        "n": case.n, "nb": case.nb,
+        "n": case.n,
+        "nb": case.nb,
         "ratio": round(case.nb / case.n, 4),
-        "skew": case.skew, "pc": case.pc, "kp": case.kp, "kvs": case.kvs,
-        "kv_big": case.kv_big, "kv_mean": case.kv_mean,
+        "skew": case.skew,
+        "pc": case.pc,
+        "kp": case.kp,
+        "kvs": case.kvs,
+        "kv_big": case.kv_big,
+        "kv_mean": case.kv_mean,
         "t_mean_us": round(t_mean, 3),
-        "t_max_us":  round(t_max, 3),
+        "t_max_us": round(t_max, 3),
         "t_skew_us": round(t_skew, 3),
         "alpha": round(alpha, 4) if alpha == alpha else None,
     }
@@ -357,6 +372,7 @@ def _measure_case(llm, case: SkewCase, slice_, iters: int) -> dict:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def _case_key(case: SkewCase) -> tuple:
     """Identity key for delta/resume matching against an existing CSV."""
@@ -373,10 +389,16 @@ def _existing_keys(csv_path: Path) -> set[tuple]:
         return set()
     keys: set[tuple] = set()
     for _, r in df.iterrows():
-        keys.add((
-            int(r["n"]), int(r["nb"]), round(float(r["skew"]), 3),
-            int(r["pc"]), int(r["kp"]), int(r["kvs"]),
-        ))
+        keys.add(
+            (
+                int(r["n"]),
+                int(r["nb"]),
+                round(float(r["skew"]), 3),
+                int(r["pc"]),
+                int(r["kp"]),
+                int(r["kvs"]),
+            )
+        )
     return keys
 
 
@@ -398,9 +420,9 @@ def _flush_rows(csv_path: Path, new_rows: list[dict]) -> pd.DataFrame:
         return pd.DataFrame()
     df = pd.concat(frames, ignore_index=True)
     # Keep the latest measurement for any repeated key.
-    df = df.drop_duplicates(
-        subset=["n", "nb", "skew", "pc", "kp", "kvs"], keep="last"
-    ).reset_index(drop=True)
+    df = df.drop_duplicates(subset=["n", "nb", "skew", "pc", "kp", "kvs"], keep="last").reset_index(
+        drop=True
+    )
     df.to_csv(csv_path, index=False)
     return df
 
@@ -429,11 +451,15 @@ def sample_skew(
     iters = args.measurement_iterations
     grid = _build_grid(args, limits)
     from llmservingsim.profiler.core.writer import _geometric_spec
+
     log.info(
         "skew grid: n=%s ratio=%s pc=%s kp=%s kvs=%s skew=(T1=%.1f, T2 swept)",
-        _geometric_spec(grid["n"]), list(grid["ratio"]),
-        _geometric_spec(grid["pc"]), _geometric_spec(grid["kp"]),
-        _geometric_spec(grid["kvs"]), _SKEW_REP,
+        _geometric_spec(grid["n"]),
+        list(grid["ratio"]),
+        _geometric_spec(grid["pc"]),
+        _geometric_spec(grid["kp"]),
+        _geometric_spec(grid["kvs"]),
+        _SKEW_REP,
     )
     all_cases = _build_cases(args, limits)
     if not all_cases:
@@ -456,11 +482,12 @@ def sample_skew(
         log.info(
             "skew resume: %d prior rows on disk, %d new cases to fire "
             "(skipped %d already-measured)",
-            len(prior_keys), len(cases), len(all_cases) - len(cases),
+            len(prior_keys),
+            len(cases),
+            len(all_cases) - len(cases),
         )
     if not cases:
-        log.info("skew: %s already has all %d cases; nothing to do",
-                 out, len(all_cases))
+        log.info("skew: %s already has all %d cases; nothing to do", out, len(all_cases))
         return out
 
     label = f"TP={tp}  skew"
@@ -472,7 +499,11 @@ def sample_skew(
             except Exception as e:
                 log.warning(
                     "skew shot failed (n=%d nb=%d pc=%d kp=%d): %s",
-                    case.n, case.nb, case.pc, case.kp, e,
+                    case.n,
+                    case.nb,
+                    case.pc,
+                    case.kp,
+                    e,
                 )
                 bar.advance(1)
                 continue
@@ -489,7 +520,8 @@ def sample_skew(
             alphas = sub["alpha"].dropna()
             log.info(
                 "%s: n=%d alpha mean=%.3f min=%.3f max=%.3f",
-                regime, len(sub),
+                regime,
+                len(sub),
                 float(alphas.mean()) if len(alphas) else 0.0,
                 float(alphas.min()) if len(alphas) else 0.0,
                 float(alphas.max()) if len(alphas) else 0.0,
