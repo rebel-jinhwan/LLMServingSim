@@ -718,7 +718,9 @@ exact equality against recorded results:
 4. `pytest` runs the unit checks: the block pool, the tiered KV cache manager
    and model config loading. Plain `test_*()` functions that assert — no
    fixtures, no base classes. `tests/conftest.py` puts the repository root on
-   `sys.path`, so no `PYTHONPATH` is needed. See `tests/README.md`
+   `sys.path`, so no `PYTHONPATH` is needed, and
+   `.github/workflows/tests.yml` runs the same command on every push and pull
+   request. See `tests/README.md`
 
 A scenario whose clock equals an existing one exercises flag parsing and
 nothing else. Several knobs only bite once the KV cache is saturated, which is
