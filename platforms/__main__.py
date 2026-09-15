@@ -1,7 +1,7 @@
 """``python -m platforms``: check the registry, device specs, resources and profiles.
 
 Needs only pyyaml. Out-of-tree discovery is exercised with fake entry points,
-the way LMCache's device-plugin tests do, so no plugin has to be installed:
+so no plugin has to be installed:
 a valid plugin with its own devices/, perf/ and models/; a name that does not
 match its entry point; a target that is not a PlatformSpec; a plugin that
 fails to import; and a plugin reusing a built-in name.

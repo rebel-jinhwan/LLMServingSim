@@ -1,8 +1,8 @@
 """Platforms: how one vLLM hardware platform differs from CUDA.
 
 vLLM supports out-of-tree hardware through ``vllm.platform_plugins`` entry
-points (``vllm-rbln`` is one), and LMCache through ``lmcache.device_plugins``.
-This package is the simulator's counterpart, built the same way:
+points (``vllm-rbln`` is one). This package is the simulator's counterpart,
+built the same way:
 
 - ``platforms.spec.PlatformSpec``: one class per platform, safe to construct
   without the hardware; every capability is read off it.
