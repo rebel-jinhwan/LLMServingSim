@@ -9,16 +9,23 @@ vLLM runs on hardware other than NVIDIA GPUs through out-of-tree
 platform plugins: a package registers itself under the
 `vllm.platform_plugins` entry-point group and overrides the platform,
 scheduler, model runner and attention backend. `vllm-rbln` is one.
-LLMServingSim models vLLM, so it has the same seam. A **platform** is a
-package under `platforms/<vendor>/` that says how that hardware differs
-from CUDA in the three places the simulator would otherwise assume the
-CUDA answer:
+LLMServingSim models vLLM, so it has the same seam. A **platform** says
+how a piece of hardware differs from CUDA in the three places the
+simulator would otherwise assume the CUDA answer:
 
-| Where | CUDA (`platforms/cuda`) | RBLN (`platforms/rbln`) |
+| Where | CUDA | A compiled-graph accelerator |
 | --- | --- | --- |
 | Measuring a shot | vLLM `layerwise_profile()`, one time per kernel | wall-clock of the whole forward between device syncs |
 | Shape of the profile | per-layer CSVs, TP emulated on one GPU, ASTRA-Sim adds the collectives | `step.csv`: one time per padded forward, TP on real ranks, collectives inside the measured time |
-| Scheduler | the in-tree port of vLLM's `Scheduler` | vllm-rbln's `RBLNScheduler`, run through vLLM's own scheduler classes |
+| Scheduler | the in-tree port of vLLM's `Scheduler` | the vLLM plugin's own scheduler, run through vLLM's scheduler classes |
+
+`cuda` is built in, under `platforms/cuda/`. Everything else is a separate
+distribution that registers itself, exactly as its vLLM plugin does. The
+worked example is
+[`llmservingsim-rbln`](https://github.com/rebel-jinhwan/llmservingsim-rbln),
+the platform for Rebellions NPUs: it ships the `rbln` platform, the
+`RBLN-CR03` device spec, profiled step bundles and four calibrated
+end-to-end examples, and LLMServingSim carries none of it.
 
 ## How a platform is chosen
 
@@ -53,8 +60,8 @@ per-category CSVs, and ASTRA-Sim simulates the TP and EP collectives
 between them.
 
 A `step` bundle comes from a device that runs a compiled graph per padded
-shape. vllm-rbln pads every prefill to `max_num_batched_tokens` query
-tokens and every decode batch up to one of a fixed set of buckets, so the
+shape: it pads every prefill to `max_num_batched_tokens` query tokens and
+every decode batch up to one of a fixed set of buckets, so the
 latency is a step function of the padded shape and there is no per-kernel
 view of the graph. The profiler therefore sweeps exactly the shapes the
 runner can produce, lone prefills over the `kv_prefill` axis and decode
@@ -86,65 +93,37 @@ against `num_gpu_blocks`: `--step-overhead-us` on every step and
 `--prefill-step-overhead-us` on top for a step that carries a prefill
 chunk. Both can be set per instance in the cluster config.
 
-The first bundle, MiniMax-M2.5 on four RBLN-CR03 (tp4 + EP, vllm-rbln
-0.26), against a 24-request random workload:
+They are per deployment, not per platform: a single-device decode step of
+5 ms carries proportionally far more host time than a four-device MoE
+step of 30 ms. Measured deployments have needed anything from 700 to 2200
+us per step and 2600 to 9000 us per prefill step, moving TTFT and TPOT
+mean from tens of percent low to under one percent.
 
-| Knobs | TTFT mean | TPOT mean | Latency mean |
-| --- | --- | --- | --- |
-| raw bundle | -7.3% | -3.9% | -4.1% |
-| 1300 us per step | -5.6% | +0.3% | -0.1% |
-| 1100 us per step, +9000 us per prefill step | +0.0% | +0.7% | +0.6% |
+Fit each knob from one measurement rather than a grid search. With
+prefill/decode disaggregation the servers' Prometheus metrics split the
+latency into exactly the parts the knobs cover:
 
-The second bundle, gpt-oss-120b (MXFP4) on one RBLN-CR03 with four
-decode buckets (1, 2, 4, 8), against 32 random-length requests:
-
-| Knobs | TTFT mean | TPOT mean | Latency mean |
-| --- | --- | --- | --- |
-| raw bundle | -11.0% | -31.7% | -29.9% |
-| MiniMax's 1100 / 9000 us | +0.7% | -16.8% | -15.3% |
-| 2200 us per step, +7000 us per prefill step | -0.2% | -0.9% | -0.8% |
-
-The knobs are per deployment, not per platform: a single-device decode
-step of 5 ms carries proportionally far more host time than a four-device
-MoE step of 30 ms. Both examples live under `bench/examples/RBLN-CR03/`
-and need vLLM and `vllm-rbln` importable to re-run, since the simulation
-drives vllm-rbln's own scheduler. The gpt-oss config raises
-`npu_mem.mem_size` above the card's 140 GB because the memory model sizes
-an MXFP4 checkpoint at 8 bits per weight, twice its footprint; the
-number is chosen so the pool holds vLLM's 227 blocks. The pp4 MiniMax
-run is kept as ground truth only (`MiniMax-M2.5-pp4/NOTE.md`): the
-profiler's per-rank timing does not measure a pipeline's latency yet.
-
-### Prefill/decode disaggregation over NIXL
-
-The third case splits Llama-3.2-1B-Instruct across two RBLN-CR03, prefill
-on one and decode on the other, with vllm-rbln's `RblnNixlConnector`
-behind vLLM's disaggregation proxy. The real run used the host-bounce
-path over upstream NIXL and UCX. Both servers' Prometheus metrics split
-its latency into parts, and each part maps to one knob:
-
-| Part of the real run | Measured | Knob it sets |
-| --- | --- | --- |
-| Decode inter-token latency | 3.41 ms, against a profiled step of about 2.7 ms | `step_overhead_us` 700 on the decode instance |
-| Prefill server, arrival to done | 20.92 ms per request, against 15.66 ms profiled over 2 chunks | `prefill_step_overhead_us` 2630 on the prefill instance |
-| NIXL transfer | 44.7 MB per request in 2.42 ms | `link_bw` 18.5 GB/s |
-| Decode's wait for remote KV, and the proxy hop | the remainder of TTFT | `link_latency` 5.3 ms |
+| Part of the real run | Knob it sets |
+| --- | --- |
+| Decode inter-token latency, against the profiled decode step | `step_overhead_us` on the decode instance |
+| Prefill server, arrival to done, against the bundle's prefill time | `prefill_step_overhead_us` on the prefill instance |
+| `nixl_bytes_transferred` over `nixl_xfer_time_seconds` | `link_bw` |
+| The remainder of TTFT | `link_latency` |
 
 NIXL moves whole KV blocks once a request's prefill is done, so the
 simulator sends each request's KV on its final prefill step, rounded up
 to blocks. `link_latency` counts about three times toward TTFT, since the
-link also carries the output hand-off, so fit it against TTFT rather
-than setting the measured wait directly.
+link also carries the output hand-off, so fit it last and against TTFT
+rather than setting the measured wait directly. The client's first token
+comes from the decode server, so TTFT spans both servers plus the proxy.
 
-| Llama-3.2-1B-Instruct PD, 48 requests | TTFT mean | TPOT mean | Latency mean |
-| --- | --- | --- | --- |
-| raw bundle | -50.8% | -19.7% | -22.9% |
-| decode overhead only | -48.2% | +0.9% | -4.3% |
-| all four knobs | -0.6% | +0.9% | +0.8% |
-
-The example lives under `bench/examples/RBLN-CR03/Llama-3.2-1B-Instruct-pd`.
-Its `vllm/` directory carries both servers' metrics next to the
-per-request results.
+A calibrated example of each shape, with the fitted numbers and the
+metrics they came from, lives in
+[`llmservingsim-rbln`](https://github.com/rebel-jinhwan/llmservingsim-rbln):
+tensor-parallel MoE, a single-device MXFP4 model, a pipeline-parallel run
+kept as ground truth only, and a two-server NIXL pair. `bench/examples`'s
+`run.sh` and `validate.sh` take `EXAMPLES_DIR`, so those examples run
+through the in-tree runner from wherever they live.
 
 ## Running vLLM's scheduler instead of the port
 
@@ -154,11 +133,11 @@ own scheduler classes, doing on the host side what `EngineCore` does:
 build the engine config from `configs/model/<model>.json`, let
 `scheduler_config.get_scheduler_cls()` pick the class, size a
 `KVCacheConfig` from the memory model's block count, then alternate
-`schedule()` and `update_from_output()` around the simulated forward. The
-`rbln` platform always uses it, pinned to
-`vllm_rbln.v1.core.rbln_scheduler.RBLNScheduler`, so vllm-rbln's
-scheduling rules run verbatim and its `VLLM_RBLN_*` environment applies.
-`--scheduler vllm` selects it for any platform.
+`schedule()` and `update_from_output()` around the simulated forward.
+`--scheduler vllm` selects it for any platform, and a platform whose vLLM
+plugin schedules differently names its own subclass through
+`scheduler_cls`, so the plugin's scheduling rules and `VLLM_*` environment
+apply verbatim.
 
 It needs vLLM importable in the simulator container. The CPU wheel is
 enough:
@@ -190,18 +169,18 @@ directly.
 
 ## Devices
 
-A platform can describe the devices it runs on, one yaml per device under
-`platforms/<vendor>/devices/`, named exactly as the cluster config's
-`hardware` and the `profiler/perf/<hardware>/` folder:
+A platform can describe the devices it runs on, one yaml per device in its
+`devices/` directory, named exactly as the cluster config's `hardware` and
+the `profiler/perf/<hardware>/` folder:
 
 ```yaml
-# platforms/rbln/devices/RBLN-CR03.yaml
-name: RBLN-CR03
+# platforms/cuda/devices/RTX4090.yaml
+name: RTX4090
 npu_mem:
-  mem_size: 140      # GB
-  mem_bw: 2000       # GB/s, a placeholder until measured
+  mem_size: 24       # GB
+  mem_bw: 1008       # GB/s
   mem_latency: 0     # ns
-kv_cache_dtypes: [auto]
+kv_cache_dtypes: [auto, fp8]
 ```
 
 A spec holds hardware facts only, the ones every deployment of the device
@@ -217,9 +196,11 @@ spec keeps working when its cluster config states `npu_mem` in full.
 | `RTX4090` | cuda | 24 | 1008 | auto, fp8 |
 | `RTXPRO6000` | cuda | 96 | 1597 | auto, fp8 |
 | `H100` | cuda | 80 | 3350 | auto, fp8 |
-| `RBLN-CR03` | rbln | 140 | 2000, placeholder | auto |
 
-`python -m platforms` checks every built-in spec and the merge.
+An installed platform's devices join the same table: `load_device` searches
+every registered platform and reports which one owns the device, which is
+how a cluster config that names only `hardware` resolves its platform.
+`python -m platforms` checks every spec it can see and the merge.
 
 ## Writing a platform
 

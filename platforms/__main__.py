@@ -52,7 +52,8 @@ def _check_builtin_devices() -> list[str]:
     assert merged == {"mem_size": 20, "mem_bw": 1008, "mem_latency": 0, "mem_util": 0.8}, merged
     assert platforms.resolve_npu_mem("NO-SUCH-DEVICE", {"mem_size": 1}) == {"mem_size": 1}
     assert platforms.load_device("NO-SUCH-DEVICE") is None
-    assert platforms.supported_kv_cache_dtypes("RBLN-CR03") == ["auto"]
+    assert platforms.supported_kv_cache_dtypes("RTX4090") == ["auto", "fp8"]
+    assert platforms.supported_kv_cache_dtypes("NO-SUCH-DEVICE") is None
     return seen
 
 

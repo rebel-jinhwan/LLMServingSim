@@ -42,10 +42,8 @@ LLMServingSim/
 │   ├── __init__.py             # load_platform(), load_device(), resolve_npu_mem(), resource_dirs()
 │   ├── profile.py              # PlatformProfile: the profiler-side interface, CUDA defaults
 │   ├── __main__.py             # `python -m platforms`: device specs, OOT discovery, profile checks
-│   ├── cuda/                   # CudaPlatform, profile.py (layerwise_profile)
-│   │   └── devices/            # RTX4090.yaml, RTXPRO6000.yaml, H100.yaml
-│   └── rbln/                   # RBLNPlatform, step granularity, simulator.py (RBLNScheduler)
-│       └── devices/            # RBLN-CR03.yaml
+│   └── cuda/                   # CudaPlatform, profile.py (layerwise_profile)
+│       └── devices/            # RTX4090.yaml, RTXPRO6000.yaml, H100.yaml
 ├── configs/
 │   ├── cluster/                # Cluster topology configs (hardware, memory, instances)
 │   ├── model/                  # Model architecture configs (subset of HF config.json)
@@ -251,71 +249,43 @@ modelled. Not modelled by it: `--prefix-storage`, a KV connector in vLLM that
 sits below the
 scheduler; the port models it directly. When a vLLM platform plugin is
 installed in the simulator environment its `check_and_update_config` runs
-too, so the run must carry the deployment's environment (for vllm-rbln:
-`VLLM_RBLN_USE_VLLM_MODEL=1`, else the plugin installs its optimum-path
-scheduler) and `--engine-kwargs` carries the knobs without a flag
-(`max_model_len`, ...).
+too, so the run must carry the deployment's environment (the plugin's own
+`VLLM_*` variables: the wrong ones and it installs a different scheduler
+than the deployment runs) and `--engine-kwargs` carries the knobs without a
+flag (`max_model_len`, ...).
 
 **Calibration knobs for a step bundle.** `--step-overhead-us` (every step)
 and `--prefill-step-overhead-us` (on top, for a step carrying a prefill
 chunk), also per instance in the cluster config, carry the host time the
 profiled `execute_model` does not include; fit them against a bench run
-after `mem_util` is matched to `num_gpu_blocks`. MiniMax-M2.5 tp4ep on
-RBLN-CR03 went from -7.3% / -3.9% (TTFT / TPOT mean) raw to +0.0% / +0.7%
-at 1100 / 9000 us; gpt-oss-120b tp1 needed 2200 / 7000 us (raw -11.0% /
--31.7%), so the knobs are per deployment. The examples are
-`bench/examples/RBLN-CR03/{MiniMax-M2.5-tp4ep,gpt-oss-120b-tp1}`, which need
-vLLM + vllm-rbln importable to re-run and are therefore not in the default
-example lists. The gpt-oss config raises `npu_mem.mem_size` past the card
-because the memory model sizes MXFP4 weights at 8 bits (no 4-bit dtype), and
-the number is what holds vLLM's 227 blocks. `MiniMax-M2.5-pp4/` is ground
-truth only: per-rank wall-clocks inside `collective_rpc` do not measure a
-pipeline's latency (prefill came out 4x long, decode 4x short), so a pp step
-profile needs one forward timed from the host.
+after `mem_util` is matched to `num_gpu_blocks`. They are per deployment,
+not per device: a single-device decode step of 5 ms carries proportionally
+far more host time than a four-device MoE step of 30 ms. Fit each knob from
+one measurement rather than a blind grid; with P/D, the servers' own
+Prometheus metrics split the latency into exactly the four parts the knobs
+cover (decode `step_overhead_us` from `inter_token_latency_seconds`, prefill
+`prefill_step_overhead_us` from the prefill server's
+`e2e_request_latency_seconds` against the bundle's prefill time, `link_bw`
+from `nixl_xfer_time_seconds` and `nixl_bytes_transferred`, and
+`link_latency` last, against TTFT, because it counts about three times: the
+link carries the output hand-off too). NIXL moves whole blocks once a
+request's prefill is done, so the vLLM-driven scheduler sends each request's
+KV on its final prefill step, rounded up to blocks, and the client's first
+token comes from decode, so TTFT spans both servers plus the proxy. The
+proxy is vLLM's `tests/v1/kv_connector/nixl_integration/toy_proxy_server.py`;
+`python -m bench run` drives one engine, so a P/D ground-truth run needs a
+client that replays the workload through the proxy and writes
+`requests.jsonl` in bench's shape.
 
-**P/D over NIXL on RBLN, what the bring-up taught.** The example is
-`bench/examples/RBLN-CR03/Llama-3.2-1B-Instruct-pd`: TTFT / TPOT / latency mean
--0.6% / +0.9% / +0.8% after calibration, from -50.8% / -19.7% / -22.9% raw. Fit
-each knob from the servers' own Prometheus metrics, not a blind grid: decode
-`step_overhead_us` from `inter_token_latency_seconds`, prefill
-`prefill_step_overhead_us` from the prefill server's `e2e_request_latency_seconds`
-against the bundle's prefill time, `link_bw` from `nixl_xfer_time_seconds` and
-`nixl_bytes_transferred`, and `link_latency` last, against TTFT, because it counts
-about three times (the link carries the output hand-off too). NIXL moves whole
-blocks once a request's prefill is done, so the vLLM-driven scheduler sends each
-request's KV on its final prefill step, rounded up to blocks. The client's first
-token comes from decode, so TTFT spans both servers plus the proxy.
-
-Facts that each cost a failed boot:
-- Device-to-device transfer (`kv_buffer_device: rbln`) needs `nixl-rbln`. The newest
-  build on pypi.rebellions.in (0.1.0.dev145) predates the `slices` field this
-  vllm-rbln reads, and calls `rebel._C.Context.global_key_at_device`, which
-  rebel-compiler 0.11.3.dev237 lacks. The field is on `rebellions-sw/nixl-rbln`'s
-  `dev` branch, which builds with meson against rebel-compiler and pins
-  `nixl<1.2`. Without `nixl-rbln` the connector falls back to upstream NIXL over UCX
-  on the host-bounce path, which is what the example ran.
-- NIXL 1.4.1's CUDA 13 build, which the `nixl` meta package picks on a host with no
-  CUDA, segfaults at exit here; 1.3.1, vLLM's own pin, does not.
-- Host-bounce allocates a host buffer the size of the KV cache and UCX pins it for
-  RDMA. A whole card's worth failed in `ibv_reg_mr` ("Cannot allocate memory");
-  size the cache to the workload with `num_gpu_blocks_override`.
-- The proxy is vLLM's `tests/v1/kv_connector/nixl_integration/toy_proxy_server.py`.
-  `python -m bench run` drives one engine, so a PD run needs a client that replays
-  the workload through the proxy and writes `requests.jsonl` in bench's shape.
-
-**RBLN facts that cost a boot each to learn.** vllm-rbln validates
-`block_size` against its `prefix_block_size` (2048), so the KV block must be
-a multiple of that (the CI perf target runs 8192; the profiler's default 16
-fails to compile with `tMM: Invalid output channel shape`). `kv_cache_dtype=fp8`
-needs the in-memory attention kernel, i.e. RBLN-CR13; CR03 runs a bf16 KV
-cache. vLLM's dummy weight loader draws from a torch Generator on the model
-device, which torch-rbln lacks, so the rbln platform's `ENGINE_KWARGS` load
-the real checkpoint and the profiler points vLLM at the model itself rather
-than the config-only tmpdir. A run needs the deployment's environment:
-`VLLM_RBLN_USE_VLLM_MODEL=1 VLLM_RBLN_DISABLE_OFFLOAD=1
-VLLM_ENGINE_READY_TIMEOUT_S=3600` and `RBLN_VISIBLE_DEVICES` for the
-ranks; `--engine-kwargs` carries `block_size`, `max_model_len`,
-`enable_expert_parallel`, `num_gpu_blocks_override`.
+**Out-of-tree examples.** `bench/examples/run.sh` and `validate.sh` take
+`EXAMPLES_DIR`, so a platform that lives outside this repository keeps its
+calibrated examples next to itself and still runs them through the in-tree
+runner; paths outside the repo root are passed through absolute. The worked
+case is [`llmservingsim-rbln`](https://github.com/rebel-jinhwan/llmservingsim-rbln),
+which ships the `rbln` platform, the `RBLN-CR03` device spec, its step
+bundles and four calibrated examples (MiniMax-M2.5 tp4+EP and pp4,
+gpt-oss-120b, and a Llama-3.2-1B P/D pair over NIXL). Vendor-specific
+knowledge belongs in that repository's README, not here.
 
 ### Profiler (`profiler/`)
 The profiler uses vLLM's built-in `layerwise_profile()` via a worker extension class to
@@ -840,8 +810,9 @@ These must match the C++ enum in `astra-sim/astra-sim/system/AstraMemoryAPI.hh`.
   - Launched via `scripts/docker-sim.sh`
   - Mounts the repo root at `/app/LLMServingSim`; ASTRA-Sim + Chakra are
     built inside via `scripts/compile.sh` on first use
-  - `--scheduler vllm` and the `rbln` platform additionally need vLLM (CPU
-    wheel) and, for rbln, `vllm-rbln` importable inside it
+  - `--scheduler vllm`, and any platform that names a vLLM scheduler,
+    additionally need vLLM (CPU wheel) and that platform's vLLM plugin
+    importable inside it
 
 ## README and docs split
 

@@ -569,7 +569,7 @@ class StepCategory(AttentionCategory):
         pp > 1: the ranks block on one another's sends and receives inside
         the timed loop, and on MiniMax-M2.5 pp4 this gave a prefill 4x
         longer and a decode 4x shorter than vLLM's own TTFT and TPOT (see
-        bench/examples/RBLN-CR03/MiniMax-M2.5-pp4/NOTE.md). A pp profile
+        the RBLN platform's MiniMax-M2.5-pp4 example). A pp profile
         needs the latency of one forward through the whole pipeline timed
         from the host; until then treat pp > 1 bundles as indicative only.
         """
