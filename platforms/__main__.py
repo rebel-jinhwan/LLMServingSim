@@ -65,6 +65,8 @@ def _check_plugins() -> None:
     (root / "perf" / "ACME-X1" / "org" / "model" / "bf16").mkdir(parents=True)
     (root / "models").mkdir()
     (root / "models" / "acme_arch.yaml").write_text("catalog: {}\n")
+    (root / "configs" / "cluster").mkdir(parents=True)
+    (root / "configs" / "cluster" / "acme_one_node.json").write_text("{}\n")
 
     acme = types.ModuleType("acme_plugin")
 
@@ -112,6 +114,21 @@ def _check_plugins() -> None:
         assert platforms.load_platform(hardware="ACME-X1").name == "acme"
         assert root / "perf" in platforms.resource_dirs("perf")
         assert root / "models" in platforms.resource_dirs("models")
+        assert root / "configs" in platforms.resource_dirs("configs")
+        try:
+            from serving.core.config_builder import resolve_cluster_config
+        except ImportError:
+            pass  # the simulator's own dependencies are absent; this check needs only pyyaml
+        else:
+            found = resolve_cluster_config("acme_one_node.json")
+            assert found == str(root / "configs" / "cluster" / "acme_one_node.json"), found
+            assert resolve_cluster_config("configs/cluster/single_node_single_instance.json") \
+                == "../configs/cluster/single_node_single_instance.json"
+            assert resolve_cluster_config("/abs/path.json") == "/abs/path.json"
+            assert resolve_cluster_config("no_such_config.json") == "../no_such_config.json"
+            # A path that names a directory is a location, never a lookup.
+            assert resolve_cluster_config("elsewhere/acme_one_node.json") \
+                == "../elsewhere/acme_one_node.json"
 
         os.environ[_registry.ENV_VAR] = "acme"
         assert platforms.load_platform().name == "acme"
@@ -142,7 +159,7 @@ def _check_plugins() -> None:
             if "is_available" in vars(cls) and cls.__module__ == "platforms.cuda":
                 del cls.is_available  # restore the class's own probe
         _reset()
-    print("ok: plugins register through entry points with their own devices/, perf/ and models/; "
+    print("ok: plugins register through entry points with their own devices/, perf/, models/ and configs/; "
           "misnamed, non-spec, broken and duplicate plugins are skipped with a warning; "
           "selection by name, env var, device and detection")
 

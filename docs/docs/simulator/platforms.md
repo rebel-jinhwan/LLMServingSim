@@ -214,6 +214,7 @@ and nothing but the entry point differs:
 <pkg>/devices/<hardware>.yaml   npu_mem defaults, kv_cache_dtypes
 <pkg>/perf/<hardware>/...       perf bundles the platform ships, optional
 <pkg>/models/<type>.yaml        architecture catalogs, optional
+<pkg>/configs/cluster/*.json    cluster configs, found by name, optional
 ```
 
 ```python
@@ -255,10 +256,22 @@ acme = "acme_pkg:AcmePlatform"
 ```
 
 The entry-point name must equal the spec's `name`. Anything the platform
-ships as files lives next to its module: `devices/`, `perf/` and
-`models/` are searched after the in-tree locations, so a plugin can ship
-its own device specs, perf bundles and architecture catalogs without
-touching LLMServingSim.
+ships as files lives next to its module: `devices/`, `perf/`, `models/`
+and `configs/` are searched after the in-tree locations, so a plugin can
+ship its own device specs, perf bundles, architecture catalogs and
+cluster configs without touching LLMServingSim.
+
+Cluster configs resolve by name, so a deployment the platform was
+calibrated for is run without a path:
+
+```bash
+python -m serving --cluster-config acme_x1_llama_tp4.json ...
+```
+
+A path is a location, absolute or relative to the repo root. A bare name
+is a lookup: the in-tree `configs/cluster/` first, then each registered
+platform's. A path that names a directory is never searched for by name,
+so a mistyped directory fails where it was typed.
 
 ### The profiler side
 

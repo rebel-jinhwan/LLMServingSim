@@ -316,12 +316,40 @@ def _sync_system_collective_dims(system_config_path, instances):
         json.dump(system_config, f, ensure_ascii=False, indent=2)
 
 
+def resolve_cluster_config(path):
+    """Where a --cluster-config may live, first hit wins.
+
+    A path is a location: absolute as it stands, relative to the repo root
+    otherwise (the simulator runs from astra-sim/, hence the ../). A bare
+    name is a lookup: the in-tree configs/cluster/ first, then each
+    registered platform's configs/cluster/. A platform can therefore ship
+    the deployments it was calibrated for, the way it ships its devices/,
+    perf/ and models/, and a run names the config without knowing which
+    package holds it.
+
+    The two are kept apart on purpose. A path that names a directory is
+    never searched for by basename, so a mistyped directory fails where it
+    was typed instead of silently resolving to a different file.
+
+    A miss returns the repo-relative candidate, so the error names what the
+    caller asked for rather than the last place searched.
+    """
+    if os.path.isabs(path):
+        return path
+    candidates = [os.path.join('..', path)]
+    if not os.path.dirname(path):
+        candidates.append(os.path.join('..', 'configs', 'cluster', path))
+        from platforms import resource_dirs
+        candidates += [str(d / 'cluster' / path) for d in resource_dirs('configs')]
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            return candidate
+    return candidates[0]
+
+
 # parse cluster configuration from JSON file and build config file for astra-sim
 def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading=False, enable_attn_offloading=False, inputs_root=None):
-    if not os.path.isabs(cluster_config_path):
-        # Relative paths are rooted at the repo, and the simulator runs from
-        # astra-sim/. An out-of-tree config arrives absolute and is left alone.
-        cluster_config_path = f'../{cluster_config_path}'
+    cluster_config_path = resolve_cluster_config(cluster_config_path)
     
     try:
         with open(cluster_config_path, 'r') as f:
