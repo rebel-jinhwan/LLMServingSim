@@ -47,6 +47,8 @@ LLMServingSim/
 ├── configs/
 │   ├── cluster/                # Cluster topology configs (hardware, memory, instances)
 │   ├── model/                  # Model architecture configs (subset of HF config.json)
+│   ├── perf/                   # Profiled latencies, one flat folder per bundle:
+│   │                           #   <hw>--<org>--<model>--<variant>/tp<N>/{dense,per_sequence,attention,moe,skew,skew_fit}.csv
 │   └── pim/                    # PIM device configs (DRAMSim3 INI format)
 ├── workloads/                   # Request trace datasets (.jsonl)
 │   └── generators/             # ShareGPT/etc → JSONL workload generators
@@ -64,7 +66,6 @@ LLMServingSim/
 │   │   └── hooks/              # vLLM-internal-API touchpoints (worker ext, MoE patch, etc.)
 │   ├── models/                 # Architecture yamls, one per HF `model_type`
 │   ├── power/                  # nvidia-smi / IPMI power-logging helpers
-│   ├── perf/                   # Output: perf/<hw>/<model>/<variant>/tp<N>/{dense,per_sequence,attention,moe,skew,skew_fit}.csv
 │   ├── v0/                     # Legacy (pre-rewrite) profiler, kept for reference
 │   ├── profile.sh              # Editable user template (MODEL / HARDWARE / TP_DEGREES / …)
 │   └── profile-all.sh          # Helper: sweeps several MODELs × TP degrees
@@ -121,7 +122,7 @@ are not part of the main branch's tree.
 ### Key data flow
 
 ```
-profiler/perf/<hw>/<model>/<variant>/tp<N>/*.csv (profiled latencies)
+configs/perf/<hw>--<model>--<variant>/tp<N>/*.csv (profiled latencies)
     ↓ _load_perf_db() + _lookup_{dense,per_sequence,attention,moe}()
 trace_generator.py → per-layer field tuples (TraceData)
     ↓ Chakra converter, in-process, via LLMConverter.convert_rows()
@@ -219,12 +220,24 @@ per platform, in tree or out, and one registry holding both.
   states `npu_mem` in full. Power stays in the node's `power` block. Do not
   add a spec value you have not measured without saying so in the file.
 - `resource_dirs(kind)` is how anything a platform ships as files is found:
-  `devices/`, `perf/<hardware>/<model>/<variant>/` bundles,
+  `devices/`, `perf/<hardware>--<model>--<variant>/` bundles,
   and `cluster/<name>.json`, each searched after the in-tree
   locations by `trace_generator._variant_root()` and
   `config_builder.resolve_cluster_config()`. An out-of-tree platform
   therefore needs no change to LLMServingSim to ship its own devices,
-  profiles and deployments. Architecture catalogs (`profiler/models/`) are
+  profiles and deployments. Only `devices/` has to be inside the package,
+  because it is what makes a cluster config's `hardware` resolve and pip
+  ships nothing outside the package. Perf bundles have their own lifecycle
+  (re-measured per SDK release, often private, potentially large), so they
+  are also found by path: a cluster config's `perf_dir` (one path or a list,
+  each relative to the config file) names the roots
+  `trace_generator._variant_root()` searches first, and
+  `python -m profiler` writes into `./perf` under the working directory.
+  A vendor keeps `perf/` at its repository root, or in a private data
+  repository, and each deployment's config points at it;
+  `config_builder._resolve_perf_dirs()` refuses one that is not a directory,
+  so a typo fails as a wrong path rather than a missing profile.
+  Architecture catalogs (`profiler/models/`) are
   deliberately not a platform resource: a catalog describes a model, not
   the hardware it runs on, so a missing `model_type` is contributed
   upstream rather than shipped by a vendor.
@@ -344,7 +357,7 @@ developed in this repo.
 Each run produces a per-category CSV bundle:
 
 ```
-perf/<hw>/<model>/<variant>/
+perf/<hw>--<model>--<variant>/
   meta.yaml                              profiler/vLLM version, effective engine kwargs, GPU,
                                          timestamps, compact sweep specs, skew_fit summary
   tp<N>/
@@ -531,7 +544,7 @@ KV-bandwidth read). Log blending of a per-axis-linear function is
 convex-biased upward by up to +6.0% per axis on a doubling grid, and
 leave-one-out over the measured grid puts it at +11.6% to +14.4% mean
 error against +2.3% to +3.7% for linear, across every bundle in
-`profiler/perf/`. Don't "restore" log space because the sweep is
+`configs/perf/`. Don't "restore" log space because the sweep is
 geometric. Latencies are stored as microseconds in the
 CSVs and converted to nanoseconds at load time. No calibration scaling —
 profiled latencies are used directly.
@@ -548,9 +561,11 @@ is `pc={pc}|{n_label}|{sr_label}|{kvb_label}|{kp_label}`, built against
 older profiles). `_hydrate_skew_fit_tables()` reads each TP's `skew_fit.csv`
 into the in-memory `alpha_by_bucket` map on first load.
 
-Profile CSV path: `profiler/perf/<hardware>/<model>/<variant>/tp<N>/{dense,
+Profile CSV path: `configs/perf/<hardware>--<model>--<variant>/tp<N>/{dense,
 per_sequence,attention,moe,skew,skew_fit}.csv` (resolved as
-`../profiler/perf/...` from the `astra-sim/` working directory).
+`../configs/perf/...` from the `astra-sim/` working directory), after any
+root the cluster config's `perf_dir` names and before a platform package's
+`perf/`. One flat folder per bundle, spelled by `platforms.bundle_dir_name()`.
 
 Variant resolution: `trace_generator.resolve_variant(dtype, kv_cache_dtype,
 model_config)` mirrors the profiler's `effective_variant` — weight dtype is
@@ -679,7 +694,7 @@ The simulator loads these via `get_config(model_name)` in `utils.py`.
 
 ### Cluster configs
 Cluster configs in `configs/cluster/` define hardware topology. Key instance fields:
-- `hardware`: must match a directory name in `profiler/perf/<hardware>/`, and names
+- `hardware`: must be the `<hardware>` prefix of a bundle folder in `configs/perf/`, and names
   `platforms/<vendor>/devices/<hardware>.yaml` when one exists
 - `npu_mem`: optional when the device has a spec. Any of `mem_size`, `mem_bw`,
   `mem_latency` stated here overrides the spec's top-level value of the same

@@ -347,6 +347,31 @@ def resolve_cluster_config(path):
     return candidates[0]
 
 
+def _resolve_perf_dirs(perf_dir, cluster_config_path):
+    """Bundle roots a cluster config names, as absolute paths.
+
+    ``perf_dir`` is one path or a list of them, each relative to the cluster
+    config itself, so a deployment shipped next to its own bundles states
+    where they are without knowing anyone's working directory. A root that
+    does not exist is refused here rather than at the first lookup, where it
+    would look like a missing profile instead of a wrong path.
+    """
+    if perf_dir is None:
+        return []
+    paths = [perf_dir] if isinstance(perf_dir, str) else list(perf_dir)
+    base = os.path.dirname(os.path.abspath(cluster_config_path))
+    roots = []
+    for p in paths:
+        root = p if os.path.isabs(p) else os.path.join(base, p)
+        root = os.path.normpath(root)
+        if not os.path.isdir(root):
+            raise FileNotFoundError(
+                f"perf_dir '{p}' in '{cluster_config_path}' is not a directory "
+                f"(resolved to '{root}')")
+        roots.append(root)
+    return roots
+
+
 # parse cluster configuration from JSON file and build config file for astra-sim
 def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading=False, enable_attn_offloading=False, inputs_root=None):
     cluster_config_path = resolve_cluster_config(cluster_config_path)
@@ -378,6 +403,7 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
     
     link_bw = cluster_config["link_bw"]
     link_latency = cluster_config["link_latency"]
+    perf_roots = _resolve_perf_dirs(cluster_config.get("perf_dir"), cluster_config_path)
 
     # Memory required keys
     mem_required_keys = ["mem_size", "mem_bw", "mem_latency"]
@@ -746,6 +772,7 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
         "pim_models": pim_models,
         "link_bw": link_bw,
         "link_latency": link_latency,
+        "perf_roots": perf_roots,
         "inputs_root": inputs_root,
         "network_config_path": network_config_path,
         "system_config_path": system_config_path,

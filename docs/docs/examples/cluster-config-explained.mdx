@@ -136,7 +136,7 @@ GPUs.
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `model_name` | string | Hugging Face model id. Must match a config in `configs/model/{model_name}.json` |
-| `hardware` | string | Hardware tag. Must match `profiler/perf/{hardware}/` (e.g. `RTXPRO6000`, `H100`) |
+| `hardware` | string | Hardware tag. The `{hardware}` prefix of a bundle in `configs/perf/` (e.g. `RTXPRO6000`, `H100`) |
 | `npu_mem` | object | Per-GPU memory: `mem_size` (GB), `mem_bw` (GB/s), `mem_latency` (ns) |
 | `pd_type` | string\|null | `"prefill"`, `"decode"`, or `null` for combined prefill+decode |
 

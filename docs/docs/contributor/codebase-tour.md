@@ -72,15 +72,14 @@ profiler/
 ├── __main__.py              CLI dispatch (profile / slice)
 ├── core/                    internals (runner, engine, categories, fit_alpha)
 ├── models/<model_type>.yaml Architecture catalogs (one per HF model_type)
-├── perf/<hw>/<model>/...    Output bundles (CSV per category)
-└── profile.sh               Editable user template
+└── profile.sh               Editable user template  (bundles land in configs/perf/)
 ```
 
 **Where to touch by intent:**
 
 | Intent | Edit |
 | --- | --- |
-| Add a new hardware target | Run the profiler with `HARDWARE=` set; output lands in `profiler/perf/<hw>/`. See **[Profiler / Adding hardware](/docs/profiler/adding-hardware)** |
+| Add a new hardware target | Run the profiler with `HARDWARE=` set; output lands in `configs/perf/<hw>--...`. See **[Profiler / Adding hardware](/docs/profiler/adding-hardware)** |
 | Add a new model architecture | Drop a YAML in `profiler/models/<model_type>.yaml`. See **[Profiler / Adding model architecture](/docs/profiler/adding-model-architecture)** |
 | Change the skew alpha fit | `profiler/core/fit_alpha.py` |
 | Change what categories get profiled | `profiler/core/categories.py` + `profiler/core/runner.py` |
@@ -107,6 +106,7 @@ are emitted). For day-to-day "did my change regress?" use, see
 configs/
 ├── cluster/<name>.json      Cluster topology (the main thing)
 ├── model/<org>/<name>.json  Model architecture (subset of HF config.json)
+├── perf/<hw>--<org>--<model>--<variant>/   Profiled latencies (CSV per category)
 └── pim/<name>.ini           PIM device specs (DRAMSim3 format)
 ```
 

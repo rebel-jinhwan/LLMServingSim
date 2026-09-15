@@ -68,7 +68,10 @@ _PKG_ROOT = Path(__file__).resolve().parent         # .../profiler
 _REPO_ROOT = _PKG_ROOT.parent                       # .../LLMServingSim
 
 ARCH_DIR = _PKG_ROOT / "models"                     # architecture yamls
-PERF_DIR = _PKG_ROOT / "perf"                       # output root
+# Output root: perf/ under the working directory, so a platform kept out of
+# tree profiles straight into its own perf/ with no flag. In-tree runs pass
+# --out-root configs/perf (profile.sh does).
+PERF_DIR = Path.cwd() / "perf"
 MODEL_CONFIG_DIR = _REPO_ROOT / "configs" / "model" # LLMServingSim's shared configs
 
 
@@ -188,7 +191,7 @@ def _add_common_flags(p: argparse.ArgumentParser) -> None:
         "--out-root",
         type=Path,
         default=PERF_DIR,
-        help=f"Output root (default: {PERF_DIR}).",
+        help="Output root (default: ./perf, i.e. under the working directory).",
     )
 
     # Model config root.

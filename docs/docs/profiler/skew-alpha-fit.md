@@ -63,7 +63,7 @@ fit skips it.
 :::info[Alpha is not clamped to [0, 1]]
 The name says "normalized", but nothing bounds the ratio, and the
 measured data lands outside `[0, 1]` regularly. Across the six bundles
-in `profiler/perf/`, per `skew.csv`:
+in `configs/perf/`, per `skew.csv`:
 
 | | range |
 | --- | --- |

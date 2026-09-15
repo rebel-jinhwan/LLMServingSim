@@ -74,7 +74,7 @@ prologue (embedding)
 ```
 
 Latencies come from the profiler's per-category CSVs under
-`profiler/perf/<hardware>/<model>/<variant>/tp<N>/` — `dense.csv` (keyed on
+`configs/perf/<hardware>--<model>--<variant>/tp<N>/` — `dense.csv` (keyed on
 `tokens`), `per_sequence.csv` (`sequences`), `attention.csv` (4D grid on
 `prefill_chunk, kv_prefill, n_decode, kv_decode`), and `moe.csv`
 (`tokens, activated_experts`). The simulator resolves the `<variant>` folder
@@ -157,7 +157,7 @@ defers it to the next engine step on a dedicated stream.
 
 ### `trace_generator.py`
 Core performance estimator. Loads the profiler's per-category CSVs under
-`profiler/perf/<hardware>/<model>/<variant>/tp<N>/` plus the architecture
+`configs/perf/<hardware>--<model>--<variant>/tp<N>/` plus the architecture
 yaml (`profiler/models/<model_type>.yaml`) and walks the yaml's
 ``sequence:`` section to emit each iteration's layers. Composable helpers:
 

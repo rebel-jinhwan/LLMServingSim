@@ -417,7 +417,7 @@ def _kv_cache_facts(engine) -> dict:
 
 
 def _hardware_facts() -> dict:
-    """Which accelerator this ran on, for matching against profiler/perf/<hw>/."""
+    """Which accelerator this ran on, for matching against configs/perf/<hw>--...."""
     facts = {}
     try:
         import torch

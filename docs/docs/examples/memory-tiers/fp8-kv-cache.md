@@ -28,7 +28,7 @@ sidebar_position: 3
   the `bf16` variant only — see the box below.
 
 > ⚠️ **You need the FP8-KV profile bundle.** If
-> `profiler/perf/<hardware>/<model>/<variant>-kvfp8/` doesn't exist,
+> `configs/perf/<hardware>--<model>--<variant>-kvfp8/` doesn't exist,
 > the simulator exits at startup with a clear `FileNotFoundError`
 > pointing at the missing folder. Bundled today:
 >
@@ -90,7 +90,7 @@ The two dtype flags compose:
 - `--kv-cache-dtype fp8`: KV cache in fp8. The variant resolver
   appends `-kvfp8` to the weights variant, so this run reads
   attention latency from
-  `profiler/perf/RTXPRO6000/meta-llama/Llama-3.1-8B/bf16-kvfp8/`.
+  `configs/perf/RTXPRO6000--meta-llama--Llama-3.1-8B--bf16-kvfp8/`.
 
 ## Expected output
 

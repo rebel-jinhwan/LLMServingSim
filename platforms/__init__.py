@@ -17,8 +17,16 @@ Layout of a platform package, in tree or in its own distribution::
     <pkg>/__init__.py              class <Vendor>Platform(PlatformSpec)
     <pkg>/profile.py               class <Vendor>Profile(PlatformProfile)
     <pkg>/devices/<hardware>.yaml  memory facts, fp8 support
-    <pkg>/perf/<hardware>/...      step or layer perf bundles (optional)
+    <pkg>/perf/<hardware>--<org>--<model>--<variant>/   perf bundles (optional)
     <pkg>/cluster/<name>.json      cluster configs, found by bare name (optional)
+
+Only ``devices/`` has to travel with the package: it is what makes a cluster
+config's ``hardware`` resolve, and pip ships nothing outside the package.
+Perf bundles have their own lifecycle (re-measured per SDK release, often
+private, potentially large), so they are found by path instead: a cluster
+config's ``perf_dir`` names the root holding them, and the profiler writes
+into the working directory. Only the layout is fixed, by
+``bundle_dir_name``.
 
 ``load_platform`` resolves, first hit wins: the explicit name, the perf
 bundle's recorded ``platform``, ``$LLMSERVINGSIM_PLATFORM``, the platform
@@ -40,9 +48,10 @@ from platforms._registry import ENTRY_POINT_GROUP, ENV_VAR, registry, validate_s
 from platforms.spec import GRANULARITIES, NPU_MEM_KEYS, DeviceSpec, PlatformSpec
 
 __all__ = [
-    "ENTRY_POINT_GROUP", "ENV_VAR", "GRANULARITIES", "NPU_MEM_KEYS", "DeviceSpec",
-    "PlatformSpec", "detect_platform", "devices", "load_device", "load_platform",
-    "registry", "resolve_npu_mem", "resource_dirs", "validate_spec",
+    "ENTRY_POINT_GROUP", "ENV_VAR", "GRANULARITIES", "NPU_MEM_KEYS",
+    "DeviceSpec", "PlatformSpec", "detect_platform", "devices", "load_device",
+    "bundle_dir_name", "load_platform", "registry", "resolve_npu_mem",
+    "resource_dirs", "validate_spec",
 ]
 
 logger = logging.getLogger("llmservingsim.platforms")
@@ -84,6 +93,19 @@ def load_platform(name: str | None = None, meta: Mapping[str, Any] | None = None
             f"unknown platform {chosen!r}; registered: {sorted(reg)} (built in under "
             f"platforms/, or installed through the {ENTRY_POINT_GROUP!r} entry-point group)")
     return reg[chosen]
+
+
+def bundle_dir_name(hardware: str, model: str, variant: str) -> str:
+    """The one directory a perf bundle lives in, e.g.
+    ``RTX4090--meta-llama--Llama-3.1-8B--bf16``.
+
+    Flat rather than nested, so every bundle a root holds is one listing,
+    and the model's ``org/name`` survives as ``org--name`` the way the
+    HuggingFace cache spells it. The profiler writes this name and the
+    simulator reads it; nothing parses it back, because each bundle's
+    meta.yaml states its hardware, model and variant.
+    """
+    return f"{hardware}--{model.replace('/', '--')}--{variant}"
 
 
 def resource_dirs(kind: str) -> list[Path]:
