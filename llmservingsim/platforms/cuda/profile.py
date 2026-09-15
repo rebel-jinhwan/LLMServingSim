@@ -44,5 +44,3 @@ class CudaProfile(PlatformProfile):
         summary = hook.results.convert_stats_to_dict()["summary_stats"]
         return [s.as_dict() for s in extract_samples(summary, catalog_slice)]
 
-
-PROFILE = CudaProfile()

@@ -6,6 +6,20 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
 ## [Unreleased]
 
 ### Added
+- Out-of-tree platforms, modelled on LMCache's multi-hardware architecture. A
+  platform is now a `platforms/spec.py::PlatformSpec` subclass carrying `name`,
+  `granularity`, `is_available()`, `profile_cls`, `scheduler_cls` and the
+  directories it ships; one registry holds the built-ins (found by scanning the
+  subpackages of `platforms/`, no registration list) and every class named by an
+  `llmservingsim.platforms` entry point. Built-ins register first and the first
+  name wins, so a plugin cannot replace one; a plugin that fails to import or
+  validate is logged and skipped. A plugin's `devices/`, `perf/` and `models/`
+  directories are searched after the in-tree ones, so an out-of-tree platform
+  ships its own device specs, perf bundles and architecture catalogs without a
+  change to LLMServingSim. `$LLMSERVINGSIM_PLATFORM` and the instance's
+  `hardware` now take part in resolution, and the profiler and bench detect the
+  installed platform where the simulator, which models a platform rather than
+  running on one, does not.
 - `bench/examples/RBLN-CR03/Llama-3.2-1B-Instruct-pd` — the first prefill/decode
   disaggregation example against real servers: Llama-3.2-1B-Instruct split over two
   RBLN-CR03 with vllm-rbln's NIXL connector (host-bounce, upstream NIXL 1.3.1 over UCX)

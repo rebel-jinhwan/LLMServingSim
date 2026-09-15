@@ -37,12 +37,14 @@ LLMServingSim/
 │   ├── validate.sh             # every scenario vs recorded clocks + bench/examples digests
 │   └── validate-baselines.txt  # the recorded values; refresh with validate.sh --update
 ├── platforms/                  # Platform plugins: how a vLLM hardware platform differs from CUDA
-│   ├── __init__.py             # load_platform(): --platform, meta.yaml::platform, entry points, cuda
+│   ├── spec.py                 # PlatformSpec: name, granularity, profile_cls, scheduler_cls, resources
+│   ├── _registry.py            # built-ins by package scan + `llmservingsim.platforms` entry points
+│   ├── __init__.py             # load_platform(), load_device(), resolve_npu_mem(), resource_dirs()
 │   ├── profile.py              # PlatformProfile: the profiler-side interface, CUDA defaults
-│   ├── __main__.py             # `python -m platforms`: device specs + PlatformProfile checks
-│   ├── cuda/                   # NAME/GRANULARITY, profile.py (layerwise_profile), simulator.py (port)
+│   ├── __main__.py             # `python -m platforms`: device specs, OOT discovery, profile checks
+│   ├── cuda/                   # CudaPlatform, profile.py (layerwise_profile)
 │   │   └── devices/            # RTX4090.yaml, RTXPRO6000.yaml, H100.yaml
-│   └── rbln/                   # step granularity, profile.py (wall-clock step grid), simulator.py (RBLNScheduler)
+│   └── rbln/                   # RBLNPlatform, step granularity, simulator.py (RBLNScheduler)
 │       └── devices/            # RBLN-CR03.yaml
 ├── configs/
 │   ├── cluster/                         # Cluster topology configs (hardware, memory, instances)
@@ -125,48 +127,69 @@ scheduler.py → next iteration
 
 ### Platforms (`platforms/`)
 vLLM runs on non-CUDA hardware through out-of-tree platform plugins
-(`vllm.platform_plugins` entry points; `vllm-rbln` is one). `platforms/` is
-the simulator's counterpart: one package per vendor with `NAME`,
-`GRANULARITY` and two submodules imported on demand, so the profiler side
-(needs vLLM + torch) never loads in the simulator container and vice versa:
+(`vllm.platform_plugins` entry points; `vllm-rbln` is one), and LMCache
+through `lmcache.device_plugins`. `platforms/` is the simulator's
+counterpart, built the same way: one `PlatformSpec` subclass per platform,
+in tree or out, and one registry holding both.
 
-- `profile.py`: `PROFILE`, an instance of a subclass of
-  `platforms/profile.py::PlatformProfile`. The base class holds the CUDA
-  defaults, so a platform overrides only what differs: `ENGINE_KWARGS`
-  merged over `HOST_ENGINE_DEFAULTS` (default `{}`), `TP_EMULATION` (default
-  `True`: shrink `SHARD_FIELDS` on one GPU; rbln `False`: boot real ranks, the
+- `platforms/spec.py::PlatformSpec` is the whole interface: `name`,
+  `granularity`, `is_available()`, `profile_cls`, `scheduler_cls`,
+  `resource_dir` / `resources(kind)`. Defaults are CUDA vLLM's, so a
+  platform overrides only what differs. `spec.profile` builds `profile_cls`
+  once and refuses one that is not a `PlatformProfile`, or a
+  step-granularity platform whose profile does not override `step_grid`.
+  Two rules keep a spec constructible on a host without the hardware, which
+  is what lets the simulator model a platform it cannot run on: importing
+  the module and constructing the spec touch neither the hardware nor its
+  SDK, and vLLM, torch and vendor SDKs are imported inside the member that
+  needs them. `is_available()` is the only probe, and only the profiler and
+  bench consult it.
+- `platforms/_registry.py` discovers both kinds: built-ins by scanning the
+  subpackages of `platforms/` for `PlatformSpec` subclasses (no
+  registration list), out-of-tree ones through the `llmservingsim.platforms`
+  entry-point group. Built-ins register first and the first spec with a
+  given name wins, so a plugin cannot silently replace one; a plugin that
+  fails to import or fails `validate_spec` is logged and skipped. The
+  entry-point name must equal the spec's `name`. Built once per process.
+- `profile.py`: the `PlatformProfile` subclass `profile_cls` returns. The
+  base holds the CUDA defaults: `ENGINE_KWARGS` merged over
+  `HOST_ENGINE_DEFAULTS` (default `{}`), `TP_EMULATION` (default `True`:
+  shrink `SHARD_FIELDS` on one GPU; `False` boots real ranks when the
   collectives are inside the compiled graph), `scheduler_output_cls()`
-  (default vLLM's `SchedulerOutput`; rbln `RBLNSchedulerOutput`),
-  `device_info()` for meta.yaml, `measure(run_forward, iterations,
-  catalog_slice)` (abstract; cuda `layerwise_profile`, rbln wall-clock between
-  device syncs) and `step_grid(args, limits)` (raises by default). `Platform.profile`
-  refuses a `PROFILE` that is not a `PlatformProfile`, and a step-granularity
-  platform whose class does not override `step_grid`. The base class imports
-  nothing heavy at module scope, so `platforms` still loads in the simulator
-  container. `python -m platforms.profile` checks both built-ins.
+  (default vLLM's `SchedulerOutput`), `device_info()` for meta.yaml,
+  `measure(run_forward, iterations, catalog_slice)` (abstract; cuda uses
+  `layerwise_profile`) and `step_grid(args, limits)` (raises by default).
+  The base imports nothing heavy at module scope, so `platforms` still
+  loads in the simulator container.
 - `devices/<hardware>.yaml`: one per device, named exactly as the cluster
   config's `hardware` and the `profiler/perf/<hardware>/` folder. It holds
   hardware facts only: `npu_mem` defaults (`mem_size`, `mem_bw`,
   `mem_latency`) and `kv_cache_dtypes`. `platforms.load_device()` finds it
-  across vendors (built-ins first, installed entry points only on a miss, so
-  built-in hardware never imports a plugin); `resolve_npu_mem()` merges it
-  under the instance's `npu_mem` in `config_builder.py`, key by key; the
-  simulator and the profiler both refuse a `kv_cache_dtype` outside the list,
-  the profiler before booting. A device with no spec still works when the
-  cluster config states `npu_mem` in full. Power stays in the node's `power`
-  block. Do not add a spec value you have not measured without saying so in
-  the file: RBLN-CR03's `mem_bw` is a placeholder and says it is
-- `simulator.py`: `scheduler_class()`. cuda returns the in-tree port
-  (`serving/core/scheduler.py`); rbln returns `RBLNVllmScheduler`, a
-  `serving/core/vllm_scheduler.py::VllmScheduler` pinned to
-  `vllm_rbln.v1.core.rbln_scheduler.RBLNScheduler`.
+  across every registered platform and reports the owning platform, so a
+  cluster config naming the hardware is enough to resolve the platform;
+  `resolve_npu_mem()` merges it under the instance's `npu_mem` in
+  `config_builder.py`, key by key; the simulator and the profiler both
+  refuse a `kv_cache_dtype` outside the list, the profiler before booting.
+  A device with no spec still works when the cluster config states
+  `npu_mem` in full. Power stays in the node's `power` block. Do not add a
+  spec value you have not measured without saying so in the file.
+- `resource_dirs(kind)` is how anything a platform ships as files is found:
+  `devices/`, `perf/<hardware>/<model>/<variant>/` bundles and
+  `models/<model_type>.yaml` catalogs, searched after the in-tree
+  locations by `trace_generator._variant_root()` /
+  `_arch_yaml_path()` and `profiler/core/config.py`. An out-of-tree
+  platform therefore needs no change to LLMServingSim to ship its own
+  devices, profiles and architectures.
 
-`load_platform(name, meta)` resolves, first hit wins: the explicit name
-(`--platform` on `python -m profiler` / `python -m serving`), the `platform`
-key of the perf bundle's meta.yaml (the profiler writes it, so a simulation
-run needs no flag), the sole installed non-cuda `llmservingsim.platforms`
-entry point, cuda. An entry point names a package with the same layout, so a
-vendor can ship its platform inside its own vLLM plugin.
+`load_platform(name, meta, *, hardware, detect)` resolves, first hit wins:
+the explicit name (`--platform` on `python -m profiler` / `python -m
+serving`), the `platform` key of the perf bundle's meta.yaml (the profiler
+writes it, so a simulation run needs no flag), `$LLMSERVINGSIM_PLATFORM`,
+the platform whose `devices/` describes the instance's hardware, the one
+platform whose `is_available()` is true (only with `detect=True`, which the
+profiler and bench pass because they run on the hardware; the simulator
+never does), and cuda. More than one available platform raises and names
+the env var.
 
 **Granularity.** `layer` is the CUDA default: per-kernel CSVs, a trace row
 per canonical layer, ASTRA-Sim adds the collectives. `step` is for a device
@@ -851,6 +874,8 @@ equality against recorded results:
 4. `python -m serving.core.vllm_scheduler` checks the vLLM-driven scheduler
    against the port (needs vLLM importable, no ASTRA-Sim).
 5. `python -m platforms` checks every built-in device spec, the `npu_mem` merge,
+   out-of-tree discovery through fake entry points (misnamed, non-spec, broken
+   and duplicate plugins are skipped),
    that every built-in platform exposes a `PlatformProfile`, and that the loader
    refuses a step platform with no grid.
 

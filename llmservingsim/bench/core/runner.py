@@ -430,12 +430,15 @@ def _hardware_facts() -> dict:
             facts["device_total_memory_bytes"] = props.total_memory
             facts["device_capability"] = f"{props.major}.{props.minor}"
         else:
-            try:
-                import rebel  # Rebellions NPU through vllm-rbln
-                facts["device_name"] = rebel.get_npu_name(0)
-                facts["rebel_version"] = getattr(rebel, "__version__", None)
-            except ImportError:
-                pass
+            # Other hardware describes itself through its platform, so no
+            # vendor SDK is imported here.
+            from platforms import detect_platform
+            platform = detect_platform()
+            if platform is not None:
+                info = platform.profile.device_info()
+                facts["platform"] = platform.name
+                facts["device_name"] = info.pop("gpu", None)
+                facts.update(info)
     except Exception as exc:
         facts["error"] = f"{type(exc).__name__}: {exc}"
     return facts

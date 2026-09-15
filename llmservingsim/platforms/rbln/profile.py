@@ -123,5 +123,3 @@ class RBLNProfile(PlatformProfile):
                     continue
                 yield Shot.attention(prefill_chunk=0, kv_prefill=0, n_decode=n, kv_decode=kd)
 
-
-PROFILE = RBLNProfile()

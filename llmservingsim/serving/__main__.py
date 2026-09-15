@@ -380,10 +380,11 @@ def main():
                         'variant folder -- fp8 resolves to <dtype>-kvfp8, e.g. bf16-kvfp8 -- and '
                         'halves KV cache memory. Override per instance with "kv_cache_dtype"')
     parser.add_argument('--platform', type=str, default=None,
-                        help='Platform plugin (cuda, rbln, or an installed llmservingsim.platforms '
-                             'entry point). Default: the platform recorded in each instance\'s '
-                             'perf bundle meta.yaml, else cuda. Picks the scheduler; the trace shape '
-                             'follows the bundle either way.')
+                        help='Platform (cuda, rbln, or one installed through the llmservingsim.platforms '
+                             'entry-point group). Default: the platform recorded in each instance\'s perf '
+                             'bundle meta.yaml, then $LLMSERVINGSIM_PLATFORM, then the platform whose '
+                             'devices/ describes the instance\'s hardware, else cuda. Picks the scheduler; '
+                             'the trace shape follows the bundle either way.')
     parser.add_argument('--scheduler', type=str, choices=['platform', 'vllm'], default='platform',
                         help='platform: the scheduler the platform names (cuda: the in-tree port; rbln: '
                              'vllm-rbln\'s RBLNScheduler). vllm: drive the installed vLLM\'s own scheduler '
@@ -561,8 +562,8 @@ def main():
         # no-mixed-batching scheduler without a flag.
         platform = load_platform(args.platform, load_bundle_meta(
             instance["hardware"], instance["model_name"],
-            inst_cfg["dtype"], inst_cfg["kv_cache_dtype"]))
-        scheduler_cls = platform.simulator.scheduler_class()
+            inst_cfg["dtype"], inst_cfg["kv_cache_dtype"]), hardware=instance["hardware"])
+        scheduler_cls = platform.scheduler_cls
         if args.scheduler == 'vllm':
             from serving.core.vllm_scheduler import VllmScheduler
             scheduler_cls = VllmScheduler

@@ -30,7 +30,7 @@ from llmservingsim.profiler.core.hooks.batch import Shot
 from llmservingsim.profiler.core.hooks.timings import TimingSample
 
 if TYPE_CHECKING:
-    from platforms import Platform
+    from platforms import PlatformSpec
 
 
 # ---------------------------------------------------------------------------
@@ -585,7 +585,7 @@ class StepCategory(AttentionCategory):
         return {"step": {"vllm": "*"}}
 
 
-def categories_for(arch: Architecture, tp: int, platform: "Platform | None" = None) -> list[Category]:
+def categories_for(arch: Architecture, tp: int, platform: "PlatformSpec | None" = None) -> list[Category]:
     """Return the list of categories that should run for this (arch, tp).
 
     A step-granularity platform runs only StepCategory. Otherwise excludes:

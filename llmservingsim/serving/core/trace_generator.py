@@ -69,6 +69,9 @@ def _arch_yaml_path(model_type):
         os.path.join(repo_root, "profiler", "models", f"{model_type}.yaml"),
         os.path.join(serving_dir, "profiler", "models", f"{model_type}.yaml"),
     ]
+    # Then architecture catalogs a platform ships in its own models/.
+    from platforms import resource_dirs
+    candidate_paths += [str(d / f"{model_type}.yaml") for d in resource_dirs("models")]
     for path in candidate_paths:
         if os.path.isfile(path):
             return path
@@ -76,7 +79,17 @@ def _arch_yaml_path(model_type):
 
 
 def _variant_root(hardware, model, variant):
-    return f"{_PROFILER_ROOT_REL}/perf/{hardware}/{model}/{variant}"
+    """In-tree ``profiler/perf`` first, then bundles a platform ships in its
+    own ``perf/``. A miss returns the in-tree path so errors name it."""
+    in_tree = f"{_PROFILER_ROOT_REL}/perf/{hardware}/{model}/{variant}"
+    if os.path.isdir(in_tree):
+        return in_tree
+    from platforms import resource_dirs
+    for d in resource_dirs("perf"):
+        candidate = d / hardware / model / variant
+        if candidate.is_dir():
+            return str(candidate)
+    return in_tree
 
 
 # ======================================================================
