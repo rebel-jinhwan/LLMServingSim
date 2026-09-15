@@ -9,6 +9,15 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
 ## [Unreleased]
 
 ### Added
+- Prefill/decode disaggregation with the vLLM-driven scheduler and step-granularity
+  bundles, following vLLM's NIXL flow. A prefill instance runs requests with
+  `max_tokens=1` as the disaggregation proxy does; a decode instance carries vLLM's
+  `DecodeBenchConnector`, so its first step computes the last prompt token, where NIXL
+  leaves a request once its KV arrives. A prefill instance's step rows carry the KV
+  bytes, and `scripts/patches/chakra-step-trace.patch` (replacing
+  `chakra-single-row-trace.patch`) lets the converter send them from a `step` row.
+  Adds `configs/cluster/rbln_cr03_llama_3.2_1b_pd.json` and a Llama-3.2-1B-Instruct
+  step bundle for RBLN-CR03.
 - `platforms/<vendor>/devices/<hardware>.yaml` — one spec per device (RTX4090,
   RTXPRO6000, H100, RBLN-CR03) holding the hardware facts every deployment shares:
   `npu_mem` defaults and the KV cache dtypes the device runs. A cluster config's

@@ -15,9 +15,20 @@ The class keeps the port's outward shape (``schedule`` / ``add_done`` /
 main loop, DP barrier and trace generator are unchanged. It needs vLLM
 importable in the simulator container; the CPU wheel is enough.
 
-Not supported here: P/D disaggregation and a lower prefix tier
-(``--prefix-storage``). In vLLM both are KV connectors, which sit below
-the scheduler; the port models them directly.
+P/D disaggregation follows vLLM's NIXL flow. A prefill instance runs each
+request with ``max_tokens=1``, as vLLM's disaggregation proxy does, and hands
+it on once that step completes; the token it sampled is discarded, so it
+records no TTFT. A decode instance carries vLLM's ``DecodeBenchConnector``,
+whose scheduler side treats every prompt token but the last as already
+present, which is where NIXL leaves a decode request once its KV has arrived
+(``_update_waiting_for_remote_kv`` backs off one token on a full-prompt hit):
+the first decode step computes that last token and emits the first output
+token. The KV transfer itself is the prefill trace's send to the paired
+decode NPU. Not modelled: NIXL's asynchronous wait
+(``WAITING_FOR_REMOTE_KVS`` for one more step), which calibration absorbs.
+
+Not supported here: a lower prefix tier (``--prefix-storage``), a KV
+connector in vLLM that sits below the scheduler; the port models it directly.
 """
 
 from __future__ import annotations
@@ -44,10 +55,6 @@ class VllmScheduler(Scheduler):
         # which is not the weight dtype the memory model sizes with.
         self._kv_cache_dtype = kwargs.get("kv_cache_dtype", "auto")
         super().__init__(*args, **kwargs)
-        if self.pd_type is not None:
-            raise NotImplementedError(
-                "P/D disaggregation is a KV connector in vLLM and is not modelled "
-                "by the vLLM-driven scheduler; use the in-tree scheduler")
         if self.memory.storage_pool is not None:
             raise NotImplementedError(
                 "--prefix-storage is a KV connector in vLLM and is not modelled by "
@@ -101,6 +108,11 @@ class VllmScheduler(Scheduler):
             async_scheduling=False,
         )
         kwargs.update(self.ENGINE_ARGS)
+        if self.pd_type == "decode":
+            # All but the last prompt token arrive from the prefill instance.
+            from vllm.config import KVTransferConfig
+            kwargs["kv_transfer_config"] = KVTransferConfig(
+                kv_connector="DecodeBenchConnector", kv_role="kv_both")
         return EngineArgs(**kwargs).create_engine_config()
 
     def _create_scheduler(self):
@@ -165,7 +177,10 @@ class VllmScheduler(Scheduler):
                 request_id=request_id,
                 prompt_token_ids=prompt,
                 sampling_params=SamplingParams(
-                    max_tokens=max(1, req.output - req.input), ignore_eos=True),
+                    # A prefill instance computes the prompt and one token, as
+                    # the disaggregation proxy asks it to.
+                    max_tokens=1 if self.pd_type == "prefill" else max(1, req.output - req.input),
+                    ignore_eos=True),
                 pooling_params=None,
                 arrival_time=req.arrival / 1e9,
                 block_hasher=self._block_hasher,
@@ -215,6 +230,7 @@ class VllmScheduler(Scheduler):
         the port.
         """
         total_len = kv_len = num_prefill = num_decode = 0
+        pd_kv_send_tokens = 0
         q_list, k_list = [], []
         prefill_q_list, prefill_k_list, decode_k_list = [], [], []
         emits: dict[str, bool] = {}
@@ -224,6 +240,10 @@ class VllmScheduler(Scheduler):
             req = self._sim[request_id]
             computed_after = vreq.num_computed_tokens
             computed_before = computed_after - num_new
+            if self.pd_type == "prefill":
+                # This step's KV, plus a prefix-cache hit on the first step: the
+                # decode side needs that KV too.
+                pd_kv_send_tokens += num_new + (computed_before if req.queuing_delay < 0 else 0)
             if req.queuing_delay < 0:
                 # First time scheduled. What vLLM already counts as computed
                 # on a brand-new request is its prefix-cache hit.
@@ -252,7 +272,7 @@ class VllmScheduler(Scheduler):
         kv_used = (pool.num_gpu_blocks - pool.get_num_free_blocks()) * self.memory.npu_pool.bytes_per_block
         batch = Batch(self.get_batch_id(), self.model, total_len, kv_len, q_list, k_list,
                       num_prefill, num_decode, prefill_q_list, prefill_k_list, decode_k_list,
-                      current, kv_used, 0, 0)
+                      current, kv_used, 0, 0, pd_kv_send_tokens=pd_kv_send_tokens)
         batch.fired.append(sys)
         batch.requests.extend(reqs)
         # Keyed by the sim request id like the port's, for whoever reads it.
@@ -281,7 +301,10 @@ class VllmScheduler(Scheduler):
         if batch is None or sys in batch.end:
             return prompt_t, gen_t, end_reqs
         batch.end.append(sys)
-        if self.start_npu not in batch.end or (self.start_npu + self.num_npus - 1) not in batch.end:
+        # A prefill instance also waits for its paired decode NPUs, which
+        # receive the KV it ships.
+        last_npu = self.num_npus * (2 if self.pd_type == "prefill" else 1) - 1
+        if self.start_npu not in batch.end or (self.start_npu + last_npu) not in batch.end:
             return prompt_t, gen_t, end_reqs
         self.logger.info("Batch #%d is done", batch.batch_id)
 
@@ -319,11 +342,20 @@ class VllmScheduler(Scheduler):
                 continue  # pp_size > 1: finished on an earlier in-flight batch
             num_new = out.num_scheduled_tokens[request_id]
             computed_before = req.num_computed_tokens - num_new if req.num_computed_tokens >= num_new else 0
-            # Prompt tokens this step, plus the prefix hit the first time.
-            if computed_before < req.input:
+            # Prompt tokens this step, plus the prefix hit the first time. A
+            # decode instance's prompt was already counted where it was prefilled.
+            if computed_before < req.input and self.pd_type != "decode":
                 prompt_t += min(num_new, req.input - computed_before)
                 if computed_before <= req.prefix_cache_hit:
                     prompt_t += req.prefix_cache_hit
+            if self.pd_type == "prefill":
+                if vreq.is_finished():
+                    # Prompt computed: its KV ships to a decode instance, and the
+                    # token sampled here is discarded, so no TTFT is recorded.
+                    self.logger.info("Request #%d is prefill done, sent to decode instance", req.id)
+                    req.status = RequestStatus.FINISHED
+                    end_reqs.append(req)
+                continue
             if tokens:
                 req.num_tokens_reached += 1
                 gen_t += 1
@@ -349,7 +381,17 @@ class VllmScheduler(Scheduler):
         self.waiting = list(self._arrivals)
 
     def add_decode(self, req):
-        raise NotImplementedError("P/D disaggregation is not modelled by the vLLM-driven scheduler")
+        """Take over a request whose prompt KV a prefill instance just shipped.
+
+        It is admitted on the next ``schedule()`` like any arrival; the
+        DecodeBenchConnector then reports all but its last prompt token as
+        present, so the first step computes one token.
+        """
+        req.instance_id = self.instance_id
+        req.status = RequestStatus.WAITING
+        req.num_computed_tokens = 0
+        bisect.insort(self._arrivals, req, key=lambda r: (r.arrival, r.id))
+        self._refresh_views()
 
     def is_request_empty(self):
         # Not has_requests(): that also counts requests finished in the last

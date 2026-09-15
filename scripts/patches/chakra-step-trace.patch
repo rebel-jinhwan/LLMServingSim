@@ -1,5 +1,5 @@
 diff --git a/src/converter/llm_converter.py b/src/converter/llm_converter.py
-index 13655fb..860a445 100644
+index 13655fb..e7eea3f 100644
 --- a/src/converter/llm_converter.py
 +++ b/src/converter/llm_converter.py
 @@ -373,7 +373,9 @@ class LLMConverter:
@@ -24,3 +24,16 @@ index 13655fb..860a445 100644
              if 'kv_load' in layers[i].name:
                  load = self.get_memory_load_node(
                              layers[i].name,
+@@ -852,7 +856,11 @@ class LLMConverter:
+                                 # overstated the transfer by
+                                 # (q_dim + 2*kv_dim) / (2*kv_dim) -- 3x for
+                                 # Llama-3.1-8B -- and ignored kv_cache_dtype.
+-                                if "v_proj" in layers[layer_num].name and layers[layer_num].comm_size > 0:
++                                # A step-granularity trace has no kv_proj: its
++                                # stage rows carry the whole stage's KV bytes.
++                                if ("v_proj" in layers[layer_num].name
++                                        or layers[layer_num].name.startswith("step")) \
++                                        and layers[layer_num].comm_size > 0:
+                                     send_kv_node = self.get_comm_node(
+                                         is_send=True,
+                                         layer_name="kv_proj",

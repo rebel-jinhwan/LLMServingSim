@@ -945,11 +945,10 @@ def _build_trace_ctx(hardware, model, config, tp_size, pp_size, local_ep, ep_tot
                 f"pp_size={pp_size} but the step-granularity profile "
                 f"{hardware}/{model}/{variant} holds {stages} pipeline stage(s); "
                 f"a step profile is taken at the deployment's pipeline depth")
-        if pd_type is not None or enable_attn_offloading:
+        if enable_attn_offloading:
             raise ValueError(
-                f"P/D disaggregation and attention offloading are not supported "
-                f"with the step-granularity profile {hardware}/{model}/{variant}: "
-                f"both attach to per-layer rows")
+                f"Attention offloading is not supported with the step-granularity "
+                f"profile {hardware}/{model}/{variant}: it attaches to per-layer rows")
 
     n_embd = config['hidden_size']
     n_head = config['num_attention_heads']
@@ -1459,6 +1458,17 @@ def _synthesize_step_trace(ctx: TraceCtx, bctx: BatchCtx) -> tuple[list[tuple], 
     inp, _, _ = calculate_sizes(ctx.model, "embedding", bctx.total_len, parallel=ctx.tp_size, fp=ctx.fp)
     _, _, out = calculate_sizes(ctx.model, "sampler", bctx.lm_head_len, parallel=ctx.tp_size, fp=ctx.fp)
     hidden = bctx.total_len * ctx.config['hidden_size'] * ctx.fp
+    # P/D: a prefill instance ships each stage's KV to the paired decode NPU,
+    # carried in the stage row's comm_size the way a layer trace carries it
+    # per qkv_proj. Layers split over stages as vLLM's get_pp_indices does:
+    # evenly, remainder to the stages before the last.
+    kv_send = [0] * ctx.pp_size
+    if ctx.pd_type == 'prefill':
+        n_layers = ctx.config['num_hidden_layers']
+        per_stage = [n_layers // ctx.pp_size] * ctx.pp_size
+        for i in range(2, n_layers % ctx.pp_size + 2):
+            per_stage[-i] += 1
+        kv_send = [_pd_kv_send_bytes(ctx, bctx) * n for n in per_stage]
     rows = []
     for stage in range(ctx.pp_size):
         latency_ns = _lookup_step(
@@ -1477,7 +1487,7 @@ def _synthesize_step_trace(ctx: TraceCtx, bctx: BatchCtx) -> tuple[list[tuple], 
                      f'REMOTE:{ctx.node_id}' if first else 'LOCAL', str(inp if first else hidden),
                      'LOCAL', '0',
                      f'REMOTE:{ctx.node_id}' if last else 'LOCAL', str(out if last else hidden),
-                     'NONE', '0', 'NONE'))
+                     'NONE', str(kv_send[stage]), 'NONE'))
         if ctx.power_model is not None:
             ctx.power_model.add_npu_active_energy_consumption(
                 ctx.hardware, ctx.node_id, latency_ns, num_npus=ctx.tp_size)
