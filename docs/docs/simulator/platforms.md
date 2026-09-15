@@ -60,8 +60,10 @@ pipeline depth: every worker times its own `execute_model`, a stage's
 time is cumulative up to it, so `step.csv` carries one row per `stage`
 with the difference, and the trace emits one row per stage with the
 hidden state on both sides of each cut. Prefill/decode disaggregation
-and PIM attention offloading are refused with a step bundle: both hang
-off per-layer rows.
+works with a step bundle: each stage row of a prefill instance carries
+that stage's KV bytes, and the converter sends them to the paired decode
+NPU. PIM attention offloading is refused, because it hangs off per-layer
+rows.
 
 ## Calibrating a step bundle against a bench run
 
@@ -130,9 +132,19 @@ keeps block 0 of its `BlockPool` as the null block, so it has one usable
 block fewer than the port at the same block count and preempts one step
 earlier; with that block returned the runs are identical.
 
-Not modelled by the vLLM-driven scheduler: prefill/decode disaggregation
-and `--prefix-storage`. Both are KV connectors in vLLM and sit below the
-scheduler; the port models them directly.
+Prefill/decode disaggregation follows vLLM's NIXL flow. A prefill
+instance runs each request with `max_tokens=1`, as vLLM's disaggregation
+proxy does, and hands it on without recording a token, because the proxy
+discards that token. A decode instance carries vLLM's
+`DecodeBenchConnector`, whose scheduler side reports every prompt token
+but the last as already present. That is where NIXL leaves a decode
+request once its KV has arrived, so decode's first step computes one
+token and emits the first output token. NIXL's asynchronous wait for one
+more step before the request resumes is not modelled.
+
+Not modelled by the vLLM-driven scheduler: `--prefix-storage`, a KV
+connector in vLLM that sits below the scheduler. The port models it
+directly.
 
 ## Devices
 

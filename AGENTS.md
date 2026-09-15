@@ -196,8 +196,11 @@ the batch to the shapes the CSV holds before the kv-axis interpolation: a
 prefill chunk to the profiled chunk (the runner pads every prefill to
 `max_num_batched_tokens`), a decode batch up to the next profiled `n_decode`
 (the runner's buckets). The shapes are read off the CSV, so a denser profile
-needs no simulator change. `pp_size > 1`, P/D and attention offloading are
-refused at step granularity: all three hang off per-layer rows.
+needs no simulator change. Attention offloading is refused at step granularity
+because it hangs off per-layer rows. P/D works: a prefill instance's stage rows
+carry that stage's KV bytes in `comm_size`, and the patched Chakra converter
+(`scripts/patches/chakra-step-trace.patch`) emits the send and receive after a row
+whose name starts with `step` the way it does after `qkv_proj`.
 
 **vLLM-driven scheduler.** `VllmScheduler` does what `EngineCore` does on the
 host: `EngineArgs(...).create_engine_config()` from a tmpdir holding
@@ -213,9 +216,17 @@ platform (needs vLLM importable; the CPU wheel is enough:
 ShareGPT requests: identical batches while nothing is preempted; under KV
 pressure vLLM's `BlockPool` keeps block 0 as the null block, so it has one
 usable block fewer and preempts one step earlier, and with that block
-returned the runs are identical. Not modelled by it: P/D and
-`--prefix-storage`, which are KV connectors in vLLM and sit below the
-scheduler; the port models them directly. When a vLLM platform plugin is
+returned the runs are identical. P/D follows vLLM's NIXL flow: a prefill
+instance runs each request with `max_tokens=1`, as vLLM's disaggregation proxy
+does, hands it on without recording a token (the proxy discards it), and a
+decode instance carries vLLM's `DecodeBenchConnector`, whose scheduler side
+reports every prompt token but the last as present. That is where NIXL leaves a
+decode request once its KV arrives (`_update_waiting_for_remote_kv` backs off
+one token on a full-prompt hit), so decode's first step computes one token and
+emits the first output token. NIXL's asynchronous wait for one more step is not
+modelled. Not modelled by it: `--prefix-storage`, a KV connector in vLLM that
+sits below the
+scheduler; the port models it directly. When a vLLM platform plugin is
 installed in the simulator environment its `check_and_update_config` runs
 too, so the run must carry the deployment's environment (for vllm-rbln:
 `VLLM_RBLN_USE_VLLM_MODEL=1`, else the plugin installs its optimum-path
