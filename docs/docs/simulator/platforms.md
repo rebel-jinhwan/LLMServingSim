@@ -22,17 +22,28 @@ CUDA answer:
 
 ## How a platform is chosen
 
-`platforms.load_platform` resolves in this order and stops at the first
-hit:
+Every platform is a `PlatformSpec` subclass, and one registry holds them
+all: the subpackages of `platforms/` plus every class named by an
+installed `llmservingsim.platforms` entry point. `platforms.load_platform`
+resolves in this order and stops at the first hit:
 
 1. `--platform <name>` on `python -m profiler` or `python -m serving`.
 2. The `platform` key in the perf bundle's `meta.yaml`. The profiler
-   writes it, so a simulation run over an RBLN bundle needs no flag: a
-   cluster config that names the hardware folder is enough.
-3. Exactly one installed `llmservingsim.platforms` entry point that is
-   not `cuda`. This mirrors vLLM's own one-plugin-at-a-time rule and is
-   how a vendor ships its platform inside its own vLLM plugin package.
-4. `cuda`.
+   writes it, so a simulation over a bundle needs no flag: a cluster
+   config that names the hardware folder is enough.
+3. `$LLMSERVINGSIM_PLATFORM`.
+4. The platform whose `devices/` describes the instance's `hardware`.
+5. The one platform whose `is_available()` is true, and only where that
+   makes sense. The profiler and bench ask for it because they run on the
+   hardware; the simulator never does, because it models a platform
+   rather than running on one. Two available platforms is an error that
+   names `$LLMSERVINGSIM_PLATFORM`.
+6. `cuda`.
+
+Built-ins register before plugins and the first spec with a given name
+wins, so a plugin cannot silently replace a built-in. A plugin that fails
+to import or fails validation is logged and skipped; the others still
+register.
 
 ## Layer vs step granularity
 
@@ -212,15 +223,67 @@ spec keeps working when its cluster config states `npu_mem` in full.
 
 ## Writing a platform
 
+A platform is a `PlatformSpec` subclass. The same layout works in tree
+(a subpackage of `platforms/`) and out of tree (its own distribution),
+and nothing but the entry point differs:
+
 ```
-platforms/<vendor>/__init__.py    NAME = "<vendor>"; GRANULARITY = "layer" | "step"
-platforms/<vendor>/profile.py     PROFILE = <Vendor>Profile(), a PlatformProfile subclass
-platforms/<vendor>/simulator.py   scheduler_class()
-platforms/<vendor>/devices/       <hardware>.yaml per device, optional
+<pkg>/__init__.py               class <Vendor>Platform(PlatformSpec)
+<pkg>/profile.py                class <Vendor>Profile(PlatformProfile)
+<pkg>/devices/<hardware>.yaml   npu_mem defaults, kv_cache_dtypes
+<pkg>/perf/<hardware>/...       perf bundles the platform ships, optional
+<pkg>/models/<type>.yaml        architecture catalogs, optional
 ```
 
-The profiler side is one interface, `platforms.profile.PlatformProfile`.
-Its defaults are CUDA vLLM's, so a subclass overrides only what differs:
+```python
+from platforms.spec import PlatformSpec
+
+class AcmePlatform(PlatformSpec):
+    name = "acme"
+    granularity = "step"
+
+    def is_available(self):
+        return importlib.util.find_spec("acme_sdk") is not None
+
+    @property
+    def profile_cls(self):
+        from acme_pkg.profile import AcmeProfile
+        return AcmeProfile
+```
+
+| Member | Default | Override when |
+| --- | --- | --- |
+| `name` | `""` | Always: lowercase, unique, equal to the entry-point name |
+| `granularity` | `"layer"` | The device runs a compiled graph per padded shape |
+| `is_available()` | `False` | The platform can probe for its hardware |
+| `profile_cls` | raises | Always, to profile on the hardware |
+| `scheduler_cls` | the in-tree port of vLLM's `Scheduler` | The platform's vLLM plugin schedules differently |
+| `resource_dir` | the spec module's directory | Never, in practice |
+
+Two rules make the spec safe to hold without the hardware, which is what
+lets the simulator model a platform it cannot run on: importing the
+module and constructing the spec must touch neither the hardware nor its
+SDK, and everything heavy is imported inside the member that needs it.
+`is_available()` is the only place that probes.
+
+Out of tree, one entry point registers the whole thing:
+
+```toml
+[project.entry-points."llmservingsim.platforms"]
+acme = "acme_pkg:AcmePlatform"
+```
+
+The entry-point name must equal the spec's `name`. Anything the platform
+ships as files lives next to its module: `devices/`, `perf/` and
+`models/` are searched after the in-tree locations, so a plugin can ship
+its own device specs, perf bundles and architecture catalogs without
+touching LLMServingSim.
+
+### The profiler side
+
+`platforms.profile.PlatformProfile` is the profiler-side interface a
+spec's `profile_cls` implements. Its defaults are CUDA vLLM's, so a
+subclass overrides only what differs:
 
 | Member | Default | Override when |
 | --- | --- | --- |
@@ -230,8 +293,6 @@ Its defaults are CUDA vLLM's, so a subclass overrides only what differs:
 | `device_info()` | `{"gpu": "unknown"}` | Always: it identifies the device in `meta.yaml` |
 | `measure(run_forward, iterations, catalog_slice)` | abstract | Always: how a shot is timed |
 | `step_grid(args, limits)` | raises | The platform is step-granularity, where it is required |
-
-A minimal step-granularity platform:
 
 ```python
 from platforms.profile import PlatformProfile
@@ -247,18 +308,8 @@ class ExampleProfile(PlatformProfile):
 
     def step_grid(self, args, limits):
         ...  # yield the Shots the runner can actually execute
-
-PROFILE = ExampleProfile()
 ```
 
-The loader refuses a `PROFILE` that is not a `PlatformProfile`, and a
-step-granularity platform whose class leaves `step_grid` at the default.
-`profile.py` may import vLLM and torch inside its methods; `simulator.py`
-may import `serving`. Neither is imported until the profiler or the
-simulator asks for it, and the base class imports nothing heavy. To ship the platform inside a vLLM plugin package, give it the
-same three modules and register it:
-
-```toml
-[project.entry-points."llmservingsim.platforms"]
-<vendor> = "<package>.<module>"
-```
+The spec refuses a `profile_cls` that is not a `PlatformProfile`, and a
+step-granularity platform whose profile leaves `step_grid` at the
+default.

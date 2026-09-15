@@ -1,123 +1,117 @@
-"""Platform plugins: how one vLLM hardware platform differs from CUDA.
+"""Platforms: how one vLLM hardware platform differs from CUDA.
 
 vLLM supports out-of-tree hardware through ``vllm.platform_plugins`` entry
-points; ``vllm-rbln`` is one. This package is the simulator's counterpart.
-A platform is a package with two submodules, imported on demand so the
-profiler side (which needs vLLM and torch) never loads in the simulator
-container and vice versa:
+points (``vllm-rbln`` is one), and LMCache through ``lmcache.device_plugins``.
+This package is the simulator's counterpart, built the same way:
 
-    platforms/<vendor>/__init__.py   NAME, GRANULARITY
-    platforms/<vendor>/profile.py    PROFILE, a platforms.profile.PlatformProfile
-                                     subclass instance: how a shot is measured
-    platforms/<vendor>/simulator.py  which Scheduler the simulator runs
-    platforms/<vendor>/devices/<hardware>.yaml
-                                     hardware facts for one device: npu_mem
-                                     defaults and the KV dtypes it supports
+- ``platforms.spec.PlatformSpec``: one class per platform, safe to construct
+  without the hardware; every capability is read off it.
+- ``platforms.profile.PlatformProfile``: the profiler-side interface a spec's
+  ``profile_cls`` implements.
+- ``platforms._registry``: built-ins (subpackages of ``platforms/``) and
+  out-of-tree specs (the ``llmservingsim.platforms`` entry-point group) in
+  one registry.
 
-``GRANULARITY`` is ``"layer"`` (per-kernel timings, the CUDA default: the
-trace is one row per canonical layer and ASTRA-Sim adds the collectives) or
-``"step"`` (one wall-clock time per padded forward, for devices that run a
-compiled graph with the collectives inside it: the trace is one row and TP
-is profiled on real ranks).
+Layout of a platform package, in tree or in its own distribution::
 
-Resolution order for ``load_platform``: the explicit name, then the
-``platform`` key of the perf bundle's meta.yaml (the profiler writes it, so
-a simulation run needs no flag), then the sole installed non-cuda
-``llmservingsim.platforms`` entry point, then cuda. An entry point names a
-package with the same three-module layout, so a vendor can ship its
-platform inside its own vLLM plugin.
+    <pkg>/__init__.py              class <Vendor>Platform(PlatformSpec)
+    <pkg>/profile.py               class <Vendor>Profile(PlatformProfile)
+    <pkg>/devices/<hardware>.yaml  npu_mem defaults, kv_cache_dtypes
+    <pkg>/perf/<hardware>/...      step or layer perf bundles (optional)
+    <pkg>/models/<model_type>.yaml architecture catalogs (optional)
+
+``load_platform`` resolves, first hit wins: the explicit name, the perf
+bundle's recorded ``platform``, ``$LLMSERVINGSIM_PLATFORM``, the platform
+whose ``devices/`` describes the instance's hardware, the one platform whose
+``is_available()`` is true (only when ``detect=True``, which the profiler and
+bench pass because they run on the hardware), and finally ``cuda``. The
+simulator never detects: it models a platform, it does not run on one.
 """
 
 from __future__ import annotations
 
 import functools
-import importlib
-import importlib.util
-from importlib.metadata import entry_points
+import logging
+import os
 from pathlib import Path
-from types import ModuleType
-from typing import TYPE_CHECKING, Any, Mapping
+from typing import Any, Mapping
 
-if TYPE_CHECKING:
-    from platforms.profile import PlatformProfile
+from platforms._registry import ENTRY_POINT_GROUP, ENV_VAR, registry, validate_spec
+from platforms.spec import GRANULARITIES, PlatformSpec
 
-ENTRY_POINT_GROUP = "llmservingsim.platforms"
-BUILTIN = {"cuda": "platforms.cuda", "rbln": "platforms.rbln"}
+__all__ = [
+    "ENTRY_POINT_GROUP", "ENV_VAR", "GRANULARITIES", "PlatformSpec",
+    "detect_platform", "load_device", "load_platform", "registry",
+    "resolve_npu_mem", "resource_dirs", "supported_kv_cache_dtypes", "validate_spec",
+]
 
-
-class Platform:
-    """A resolved platform package. ``profile`` and ``simulator`` import
-    their submodule on first access."""
-
-    def __init__(self, pkg: ModuleType) -> None:
-        self.pkg = pkg
-        self.name: str = pkg.NAME
-        self.granularity: str = pkg.GRANULARITY
-        if self.granularity not in ("layer", "step"):
-            raise ValueError(
-                f"platform {self.name!r}: GRANULARITY must be 'layer' or 'step', "
-                f"got {self.granularity!r}")
-
-    @property
-    def profile(self) -> PlatformProfile:
-        """The platform's ``PROFILE``, checked against the interface."""
-        from platforms.profile import PlatformProfile
-
-        module = importlib.import_module(self.pkg.__name__ + ".profile")
-        prof = getattr(module, "PROFILE", None)
-        if not isinstance(prof, PlatformProfile):
-            raise TypeError(
-                f"platform {self.name!r}: {module.__name__}.PROFILE must be a "
-                f"platforms.profile.PlatformProfile instance, got {type(prof).__name__}")
-        if self.granularity == "step" and type(prof).step_grid is PlatformProfile.step_grid:
-            raise TypeError(
-                f"platform {self.name!r} is step-granularity but "
-                f"{type(prof).__name__} does not override step_grid()")
-        return prof
-
-    @property
-    def simulator(self) -> ModuleType:
-        return importlib.import_module(self.pkg.__name__ + ".simulator")
-
-    def __repr__(self) -> str:
-        return f"Platform({self.name}, granularity={self.granularity})"
+logger = logging.getLogger("llmservingsim.platforms")
 
 
-def _installed() -> dict[str, str]:
-    return {ep.name: ep.value for ep in entry_points(group=ENTRY_POINT_GROUP)}
+def detect_platform() -> PlatformSpec | None:
+    """The one platform whose hardware this host has, or None. Raises when
+    more than one is available: pick with ``$LLMSERVINGSIM_PLATFORM``."""
+    available = []
+    for spec in registry().values():
+        try:
+            ok = spec.is_available()
+        except Exception as e:  # noqa: BLE001 - a probe must not break discovery
+            logger.warning("platform %r is_available() raised %s: %s", spec.name, type(e).__name__, e)
+            ok = False
+        if ok:
+            available.append(spec)
+    if len(available) > 1:
+        raise RuntimeError(
+            f"several platforms are available on this host: {[s.name for s in available]}; "
+            f"choose one with {ENV_VAR} or --platform")
+    return available[0] if available else None
 
 
-def _devices_dirs(target: str) -> list[Path]:
-    spec = importlib.util.find_spec(target)
-    return [Path(d) / "devices" for d in (spec.submodule_search_locations or [])] if spec else []
+def load_platform(name: str | None = None, meta: Mapping[str, Any] | None = None, *,
+                  hardware: str | None = None, detect: bool = False) -> PlatformSpec:
+    """Resolve a platform; see the module docstring for the order."""
+    reg = registry()
+    chosen = name or (meta or {}).get("platform") or os.environ.get(ENV_VAR)
+    if chosen is None and hardware is not None:
+        chosen = (load_device(hardware) or {}).get("platform")
+    if chosen is None and detect:
+        spec = detect_platform()
+        chosen = spec.name if spec is not None else None
+    chosen = chosen or "cuda"
+    if chosen not in reg:
+        raise ValueError(
+            f"unknown platform {chosen!r}; registered: {sorted(reg)} (built in under "
+            f"platforms/, or installed through the {ENTRY_POINT_GROUP!r} entry-point group)")
+    return reg[chosen]
+
+
+def resource_dirs(kind: str) -> list[Path]:
+    """Every registered platform's ``<resource_dir>/<kind>`` that exists, in
+    registry order (built-ins first)."""
+    return [p for spec in registry().values() if (p := spec.resources(kind)) is not None]
 
 
 @functools.cache
 def load_device(hardware: str) -> dict[str, Any] | None:
-    """The spec for ``hardware`` from ``platforms/<vendor>/devices/<hardware>.yaml``,
-    with ``platform`` set to the vendor it was found under, or None when no
-    platform describes that device (a cluster config then has to state
-    ``npu_mem`` in full, as before).
-
-    Built-in vendors are searched first and installed entry points only on a
-    miss, so looking up built-in hardware never imports a plugin package.
-    """
+    """The spec for ``hardware`` from a platform's ``devices/<hardware>.yaml``,
+    with ``platform`` set to the platform that ships it, or None when no
+    platform describes that device (a cluster config then states ``npu_mem``
+    in full)."""
     import yaml
 
-    for group in (BUILTIN, _installed()):
-        found = [(name, d / f"{hardware}.yaml") for name, target in group.items()
-                 for d in _devices_dirs(target) if (d / f"{hardware}.yaml").is_file()]
-        if len(found) > 1:
-            raise ValueError(
-                f"device {hardware!r} is described by more than one platform: "
-                f"{[str(p) for _, p in found]}")
-        if found:
-            name, path = found[0]
-            data = yaml.safe_load(path.read_text()) or {}
-            if data.get("name") != hardware:
-                raise ValueError(f"{path}: name must be {hardware!r}, got {data.get('name')!r}")
-            return {**data, "platform": name}
-    return None
+    found = [(spec.name, d / f"{hardware}.yaml") for spec in registry().values()
+             if (d := spec.resources("devices")) is not None and (d / f"{hardware}.yaml").is_file()]
+    if len(found) > 1:
+        raise ValueError(
+            f"device {hardware!r} is described by more than one platform: "
+            f"{[str(p) for _, p in found]}")
+    if not found:
+        return None
+    platform_name, path = found[0]
+    data = yaml.safe_load(path.read_text()) or {}
+    if data.get("name") != hardware:
+        raise ValueError(f"{path}: name must be {hardware!r}, got {data.get('name')!r}")
+    return {**data, "platform": platform_name}
 
 
 def resolve_npu_mem(hardware: str, given: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -131,19 +125,3 @@ def supported_kv_cache_dtypes(hardware: str) -> list[str] | None:
     """The KV cache dtypes ``hardware`` can run, or None when unknown."""
     device = load_device(hardware)
     return list(device["kv_cache_dtypes"]) if device and "kv_cache_dtypes" in device else None
-
-
-def load_platform(name: str | None = None, meta: Mapping[str, Any] | None = None) -> Platform:
-    """Resolve a platform by name, by the perf bundle's meta, or by discovery."""
-    installed = _installed()
-    if name is None:
-        name = (meta or {}).get("platform")
-    if name is None:
-        oot = [n for n in installed if n != "cuda"]
-        name = oot[0] if len(oot) == 1 else "cuda"
-    target = installed.get(name) or BUILTIN.get(name)
-    if target is None:
-        raise ValueError(
-            f"unknown platform {name!r}; built in: {sorted(BUILTIN)}, "
-            f"installed via {ENTRY_POINT_GROUP}: {sorted(installed)}")
-    return Platform(importlib.import_module(target))

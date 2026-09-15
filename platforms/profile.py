@@ -59,36 +59,33 @@ class PlatformProfile(ABC):
 
 
 def _selfcheck() -> None:
-    """``python -m platforms.profile``: both built-in platforms expose a
-    ``PlatformProfile``, and a step platform without a grid is refused."""
-    import types
-
-    from platforms import BUILTIN, Platform, load_platform
-    # Run as `python -m`, this file is __main__, whose PlatformProfile is a
-    # second copy of the class. Check against the one the platforms import.
+    """Every registered platform's profile is a ``PlatformProfile``, and a
+    step platform whose profile has no grid is refused. Run by
+    ``python -m platforms``."""
+    from platforms import registry
+    from platforms.spec import PlatformSpec
+    # Run as ``python -m``, this file would be __main__ with its own copy of
+    # the class; check against the one the platforms import.
     from platforms.profile import PlatformProfile as Base
 
-    for name in BUILTIN:
-        prof = load_platform(name).profile
-        assert isinstance(prof, Base), (name, type(prof))
+    for spec in registry().values():
+        assert isinstance(spec.profile, Base), (spec.name, type(spec.profile))
 
     class NoGrid(Base):
         def measure(self, run_forward, iterations, catalog_slice):
             return []
 
-    pkg = types.ModuleType("fake_step_platform")
-    pkg.NAME, pkg.GRANULARITY = "fake", "step"
-    mod = types.ModuleType("fake_step_platform.profile")
-    mod.PROFILE = NoGrid()
-    sys_modules = __import__("sys").modules
-    sys_modules[pkg.__name__], sys_modules[mod.__name__] = pkg, mod
+    class NoGridPlatform(PlatformSpec):
+        name, granularity = "nogrid", "step"
+        profile_cls = NoGrid  # a plain class attribute satisfies the property's contract
+
     try:
-        Platform(pkg).profile
+        NoGridPlatform().profile
     except TypeError as e:
         assert "step_grid" in str(e), e
     else:
         raise AssertionError("a step platform without step_grid was accepted")
-    print("ok: cuda and rbln expose PlatformProfile; a step platform without step_grid is refused")
+    print(f"ok: {sorted(registry())} expose PlatformProfile; a step platform without step_grid is refused")
 
 
 if __name__ == "__main__":

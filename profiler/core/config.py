@@ -28,7 +28,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 if TYPE_CHECKING:
-    from platforms import Platform
+    from platforms import PlatformSpec
 
 
 # ---------------------------------------------------------------------------
@@ -308,9 +308,14 @@ def resolve_architecture_by_model_type(
     candidate = arch_dir / f"{model_type}.yaml"
     if candidate.is_file():
         return candidate.resolve()
+    # Then architecture catalogs a platform ships in its own models/.
+    from platforms import resource_dirs
+    for models_dir in resource_dirs("models"):
+        if (models_dir / f"{model_type}.yaml").is_file():
+            return (models_dir / f"{model_type}.yaml").resolve()
 
     # List available architectures to help the user decide what to do.
-    available = sorted(p.stem for p in arch_dir.glob("*.yaml"))
+    available = sorted({p.stem for d in (arch_dir, *resource_dirs("models")) for p in d.glob("*.yaml")})
     raise FileNotFoundError(
         f"No architecture yaml found for model_type={model_type!r}. "
         f"Tried {candidate}.\n"
@@ -513,7 +518,7 @@ def _short_dtype(d: str) -> str:
 # overrides via ProfileArgs are merged on top, but most of these should
 # not be changed (changing them breaks profiling correctness).
 
-def mnbt_bumped(platform: "Platform") -> bool:
+def mnbt_bumped(platform: "PlatformSpec") -> bool:
     """Whether the engine is booted with ``max_num_batched_tokens`` raised
     by ``max_num_seqs``. The bump gives the layer-granularity sweeps room
     for mixed shots past MNBT; a step sweep never mixes, and on a

@@ -18,5 +18,3 @@ class RBLNVllmScheduler(VllmScheduler):
     ENGINE_ARGS = {"scheduler_cls": "vllm_rbln.v1.core.rbln_scheduler.RBLNScheduler"}
 
 
-def scheduler_class() -> type[VllmScheduler]:
-    return RBLNVllmScheduler

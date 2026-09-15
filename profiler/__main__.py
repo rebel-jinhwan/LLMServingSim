@@ -86,10 +86,11 @@ def _add_common_flags(p: argparse.ArgumentParser) -> None:
     )
     p.add_argument(
         "--platform",
-        default="cuda",
-        help="Platform plugin under platforms/ or an installed "
-             "llmservingsim.platforms entry point (cuda, rbln). "
-             "Default: cuda.",
+        default=None,
+        help="Platform (cuda, rbln, or one installed through the "
+             "llmservingsim.platforms entry-point group). Default: "
+             "$LLMSERVINGSIM_PLATFORM, then the platform whose devices/ "
+             "describes --hardware, then the one whose hardware this host has.",
     )
     p.add_argument(
         "--engine-kwargs",
@@ -331,6 +332,7 @@ def _build_profile_args(
     architecture: str,
     model_config: dict,
 ) -> ProfileArgs:
+    platform = load_platform(ns.platform, hardware=ns.hardware, detect=True)
     # Refuse a KV dtype the device cannot run before an engine is booted for
     # it: on RBLN-CR03 fp8 KV otherwise fails minutes in, at compile time.
     kv = ns.kv_cache_dtype or "auto"
@@ -343,8 +345,8 @@ def _build_profile_args(
         architecture=architecture,
         model=hf_id,
         hardware=ns.hardware,
-        platform=ns.platform,
-        tp_degrees=_parse_tp(ns.tp, require_tp1=load_platform(ns.platform).granularity == "layer"),
+        platform=platform.name,
+        tp_degrees=_parse_tp(ns.tp, require_tp1=platform.granularity == "layer"),
         variant=ns.variant,
         dtype=ns.dtype,
         kv_cache_dtype=ns.kv_cache_dtype,
