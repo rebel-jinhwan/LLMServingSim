@@ -1,10 +1,10 @@
 """End-to-end vLLM benchmark + simulator validation.
 
-``python -m llmservingsim.bench run``
+``llmservingsim bench run``
     Run a vLLM serving benchmark against a given dataset/model/engine config
     and write per-request timestamps + per-tick metrics under bench/results/.
 
-``python -m llmservingsim.bench validate``
+``llmservingsim bench validate``
     Compare a finished bench run against simulator output for the same
     dataset/cluster, produce throughput / running-waiting / latency-CDF
     plots and a numeric TTFT/TPOT/throughput summary.
@@ -18,8 +18,8 @@ Module map:
         validate.py             bench-vs-sim comparison
         plots.py                throughput / running-waiting / latency-CDF helpers
         logger.py               Rich-based logger + stdio capture
-    bench.sh                    host-side ``python -m llmservingsim.bench run`` wrapper
-    validate.sh                 host-side ``python -m llmservingsim.bench validate`` wrapper
+    bench.sh                    host-side ``llmservingsim bench run`` wrapper
+    validate.sh                 host-side ``llmservingsim bench validate`` wrapper
     results/                    output: bench/results/<run_id>/
 
 Output schema (one bench run)::

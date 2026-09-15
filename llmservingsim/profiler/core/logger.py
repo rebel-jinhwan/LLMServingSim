@@ -60,7 +60,7 @@ if TYPE_CHECKING:
 
 # --- module-level singletons ------------------------------------------------
 
-# Console streams to stdout so ``python -m llmservingsim.profiler profile ... > out.log``
+# Console streams to stdout so ``llmservingsim profiler profile ... > out.log``
 # captures the full output with a single ``>``. CSV writers do their own
 # file I/O (not stdout), so the profiler's own stdout is free for logs.
 _THEME = Theme(

@@ -8,7 +8,7 @@ picked uniformly at random with their turn index advanced per pick, so
 the request stream interleaves turns across sessions naturally.
 
 Two modes, both producing the same flat-request format consumed by
-``python -m llmservingsim.bench`` and ``python -m llmservingsim.serving``::
+``llmservingsim bench`` and ``llmservingsim serving``::
 
     {
       "input_toks":      <int>,

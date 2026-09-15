@@ -3,7 +3,7 @@ sidebar_position: 5
 title: Bench CLI
 ---
 
-# `python -m llmservingsim.bench` CLI flags
+# `llmservingsim bench` CLI flags
 
 Complete reference for the vLLM benchmark harness. `bench` has two
 subcommands: `run` replays a workload through real vLLM, `validate`
@@ -16,11 +16,11 @@ Both must run inside the **vLLM container**
 For the resulting accuracy numbers, see
 **[Validation](/docs/validation)**.
 
-## `python -m llmservingsim.bench run`
+## `llmservingsim bench run`
 
 Strict replay: the runner reads a LLMServingSim-format JSONL workload
-— the same format `python -m llmservingsim.workloads.generators` emits and
-`python -m llmservingsim.serving --dataset` consumes — and pins every request's
+— the same format `llmservingsim workloads` emits and
+`llmservingsim serving --dataset` consumes — and pins every request's
 `input_tok_ids` and `output_toks` via
 `SamplingParams(min_tokens=N, max_tokens=N, ignore_eos=True)`. The
 vLLM run therefore processes exactly the prompts the simulator sees,
@@ -60,7 +60,7 @@ comparison is not apples-to-apples.
 | `--kv-cache-dtype` | string | `auto` | vLLM `kv_cache_dtype` |
 | `--seed` | int | `42` | Sampling seed |
 
-:::note[Defaults differ from `python -m llmservingsim.serving`]
+:::note[Defaults differ from `llmservingsim serving`]
 `bench run` defaults `--dtype` to `bfloat16` outright, where the
 simulator resolves it from the model config's `torch_dtype`. `bench`
 also has no `--block-size`: vLLM picks the KV block size itself, and
@@ -104,7 +104,7 @@ its capacity at the same `mem_util` is an upper bound. See
 The dataset is never modified — generation lives in
 `llmservingsim/workloads/generators`.
 
-## `python -m llmservingsim.bench validate`
+## `llmservingsim bench validate`
 
 Loads the bench artifacts plus the simulator's per-request CSV and log
 for the same workload, derives TTFT / TPOT / end-to-end latency on both
@@ -116,7 +116,7 @@ into a subdirectory of the bench run.
 | Flag | Type | Description |
 | --- | --- | --- |
 | `--bench-dir` | path | A finished `bench run` output directory |
-| `--sim-csv` | path | Simulator per-request CSV, i.e. whatever you passed to `python -m llmservingsim.serving --output` |
+| `--sim-csv` | path | Simulator per-request CSV, i.e. whatever you passed to `llmservingsim serving --output` |
 | `--sim-log` | path | Simulator log, parsed for per-tick running / waiting counts. Capture it by redirecting the simulator's stdout |
 
 ### Optional

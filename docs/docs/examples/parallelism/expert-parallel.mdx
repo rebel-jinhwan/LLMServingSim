@@ -65,7 +65,7 @@ constraint `ep_size` divides `num_local_experts` is checked at startup.
 ## Run
 
 ```bash
-python -m llmservingsim.serving \
+llmservingsim serving \
   --cluster-config 'configs/cluster/single_node_moe_single_instance.json' \
   --dtype bfloat16 --block-size 16 \
   --dataset 'workloads/example_trace.jsonl' \

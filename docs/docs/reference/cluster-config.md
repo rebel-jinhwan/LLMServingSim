@@ -194,7 +194,7 @@ Three rules the table cannot show:
 
 ### Runtime overrides (optional)
 
-Exactly **14** of the `python -m llmservingsim.serving` flags can be re-specified per
+Exactly **14** of the `llmservingsim serving` flags can be re-specified per
 instance, letting one cluster run heterogeneous instances — a prefill
 instance with a tight `max_num_seqs` next to a decode instance with a
 wide one, or two instances at different `mem_util`. Every one of them

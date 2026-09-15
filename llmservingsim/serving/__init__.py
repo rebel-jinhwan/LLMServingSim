@@ -1,7 +1,7 @@
 """LLMServingSim 2.0 — cycle-level LLM serving simulator.
 
 Python frontend that drives the ASTRA-Sim C++ backend. The top-level
-package only exposes the CLI (``python -m llmservingsim.serving``); all simulator
+package only exposes the CLI (``llmservingsim serving``); all simulator
 internals live under ``serving.core``.
 
 Module map:

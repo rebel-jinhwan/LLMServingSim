@@ -89,7 +89,7 @@ lengths in the 1000-3000 token range and tool durations of 50-300 ms
 Run it with the bundled DP+EP MoE config:
 
 ```bash
-python -m llmservingsim.serving \
+llmservingsim serving \
   --cluster-config 'configs/cluster/single_node_moe_dp_ep_instance.json' \
   --dtype bfloat16 --block-size 16 \
   --dataset 'workloads/swe-bench-qwen3-30b-a3b-50-sps0.2.jsonl' \

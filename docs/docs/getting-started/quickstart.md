@@ -14,7 +14,7 @@ inside the simulator container at `/app/LLMServingSim`.
 ## Run the example
 
 ```bash
-python -m llmservingsim.serving \
+llmservingsim serving \
   --cluster-config 'configs/cluster/single_node_single_instance.json' \
   --dtype bfloat16 --block-size 16 \
   --dataset 'workloads/example_trace.jsonl' \

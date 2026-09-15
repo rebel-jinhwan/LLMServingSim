@@ -45,7 +45,7 @@ sequenceDiagram
 
 ## Stage 1, Loaded into the Router
 
-When `python -m llmservingsim.serving --dataset workloads/foo.jsonl` starts up,
+When `llmservingsim serving --dataset workloads/foo.jsonl` starts up,
 `router.load_requests()` parses the JSONL line by line and builds
 `Request` objects:
 

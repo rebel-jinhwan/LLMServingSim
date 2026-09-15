@@ -75,7 +75,7 @@ flag, not a config field. Example using the bundled simple config:
 ## Run
 
 ```bash
-python -m llmservingsim.serving \
+llmservingsim serving \
   --cluster-config 'configs/cluster/single_node_single_instance.json' \
   --dtype bfloat16 --kv-cache-dtype fp8 --block-size 16 \
   --dataset 'workloads/example_trace.jsonl' \

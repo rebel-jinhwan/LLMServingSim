@@ -1,4 +1,4 @@
-"""Simulation entry point: ``python -m llmservingsim.serving --cluster-config <...> [...]``.
+"""Simulation entry point: ``llmservingsim serving --cluster-config <...> [...]``.
 
 Parses CLI args, generates ASTRA-Sim input files via ``serving.core.config_builder``,
 spawns the ASTRA-Sim subprocess, and runs the iteration loop:
@@ -257,7 +257,7 @@ def main():
     os.chdir(astra_sim)
 
     # -------------------------------------- Argument parsing --------------------------------------
-    parser = argparse.ArgumentParser(prog='python -m llmservingsim.serving',
+    parser = argparse.ArgumentParser(prog='llmservingsim serving',
                                      description='LLMServingSim') 
     
     parser.add_argument('--cluster-config', type=str, default='configs/cluster/single_node_single_instance.json',

@@ -33,7 +33,7 @@ cd "$REPO_ROOT"
 
 for MODEL in "${MODELS[@]}"; do
 
-    cmd=(python -m llmservingsim.profiler profile "$MODEL" --hardware "$HARDWARE")
+    cmd=(llmservingsim profiler profile "$MODEL" --hardware "$HARDWARE")
     cmd+=(--tp "$TP_DEGREES")
     cmd+=(--max-num-batched-tokens "$MAX_NUM_BATCHED_TOKENS")
     cmd+=(--max-num-seqs "$MAX_NUM_SEQS")

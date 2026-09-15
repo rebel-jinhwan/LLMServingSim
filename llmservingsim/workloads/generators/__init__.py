@@ -10,7 +10,7 @@ Produces JSONL workloads in the format the simulator expects:
       "output_tok_ids":   list[int]      # tokenized output (informational)
     }
 
-Each generator is invoked via ``python -m llmservingsim.workloads.generators <name> ...``.
+Each generator is invoked via ``llmservingsim workloads <name> ...``.
 Currently shipped:
     sharegpt   ShareGPT conversations -> sim workload, configurable rate/limit/seed
 """

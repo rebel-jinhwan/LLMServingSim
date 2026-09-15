@@ -1,7 +1,7 @@
 """CLI dispatch for workload generators.
 
 Usage:
-    python -m llmservingsim.workloads.generators sharegpt --model <hf-id> --num-reqs 300 --sps 10 \
+    llmservingsim workloads sharegpt --model <hf-id> --num-reqs 300 --sps 10 \
         --source <path-or-hf-id> --output workloads/sharegpt-<model>-<n>-sps<r>.jsonl
 """
 
@@ -12,7 +12,7 @@ import sys
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(prog="llmservingsim.workloads.generators")
+    parser = argparse.ArgumentParser(prog="llmservingsim workloads")
     sub = parser.add_subparsers(dest="generator", required=True)
 
     sg = sub.add_parser("sharegpt", help="ShareGPT -> LLMServingSim JSONL")

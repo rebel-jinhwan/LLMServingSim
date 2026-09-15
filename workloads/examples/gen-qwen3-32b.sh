@@ -11,7 +11,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 MODEL="${MODEL:-Qwen/Qwen3-32B}"
 
-python -m llmservingsim.workloads.generators sharegpt \
+llmservingsim workloads sharegpt \
     --model "$MODEL" \
     --source shibing624/sharegpt_gpt4 \
     --num-reqs 300 --sps 10 --seed 42 \

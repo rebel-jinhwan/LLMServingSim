@@ -1,6 +1,6 @@
 # serving
 
-LLMServingSim simulator core. Run as `python -m llmservingsim.serving --cluster-config <...> [...]`.
+LLMServingSim simulator core. Run as `llmservingsim serving --cluster-config <...> [...]`.
 
 ## Layout
 
@@ -236,4 +236,4 @@ terminal output.
 
 ### `logger.py`
 Configures the LLMServingSim logger. Log level is set via `--log-level` on the
-`python -m llmservingsim.serving` CLI.
+`llmservingsim serving` CLI.

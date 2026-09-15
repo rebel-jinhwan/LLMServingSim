@@ -254,7 +254,7 @@ In your `cluster_config.json`:
 }
 ```
 
-Run `python -m llmservingsim.serving --cluster-config ... --dataset workloads/example_trace.jsonl ...`.
+Run `llmservingsim serving --cluster-config ... --dataset workloads/example_trace.jsonl ...`.
 
 If anything's off (layer not found, infinite loop, missing collective),
 the simulator will tell you which layer in your YAML it doesn't know
