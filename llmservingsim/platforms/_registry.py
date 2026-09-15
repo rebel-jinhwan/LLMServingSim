@@ -1,5 +1,4 @@
-"""Discovery of built-in and out-of-tree platforms, modelled on LMCache's
-``_device_detect``.
+"""Discovery of built-in and out-of-tree platforms.
 
 - Built-in platforms are ``PlatformSpec`` subclasses defined in a subpackage
   of ``platforms/`` (its ``__init__``); no registration list.

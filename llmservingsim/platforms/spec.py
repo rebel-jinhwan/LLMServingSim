@@ -1,6 +1,6 @@
 """``PlatformSpec``: the one object that describes a hardware platform.
 
-Modelled on LMCache's ``DeviceSpec``. A platform is a subclass of
+A platform is a subclass of
 ``PlatformSpec``, built in (a subpackage of ``platforms/``) or out of tree
 (a class named by an ``llmservingsim.platforms`` entry point). Either way it
 goes through the same registry (``platforms._registry``) and every

@@ -24,8 +24,8 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
   Paths outside the repo root are passed through absolute instead of refused.
 
 ### Added
-- Out-of-tree platforms, modelled on LMCache's multi-hardware architecture. A
-  platform is now a `platforms/spec.py::PlatformSpec` subclass carrying `name`,
+- Out-of-tree platforms. A platform is now a
+  `platforms/spec.py::PlatformSpec` subclass carrying `name`,
   `granularity`, `is_available()`, `profile_cls`, `scheduler_cls` and the
   directories it ships; one registry holds the built-ins (found by scanning the
   subpackages of `platforms/`, no registration list) and every class named by an

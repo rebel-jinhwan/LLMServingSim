@@ -125,10 +125,9 @@ scheduler.py → next iteration
 
 ### Platforms (`platforms/`)
 vLLM runs on non-CUDA hardware through out-of-tree platform plugins
-(`vllm.platform_plugins` entry points; `vllm-rbln` is one), and LMCache
-through `lmcache.device_plugins`. `platforms/` is the simulator's
-counterpart, built the same way: one `PlatformSpec` subclass per platform,
-in tree or out, and one registry holding both.
+(`vllm.platform_plugins` entry points; `vllm-rbln` is one). `platforms/` is
+the simulator's counterpart, built the same way: one `PlatformSpec` subclass
+per platform, in tree or out, and one registry holding both.
 
 - `platforms/spec.py::PlatformSpec` is the whole interface: `name`,
   `granularity`, `is_available()`, `profile_cls`, `scheduler_cls`,
