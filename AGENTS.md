@@ -172,12 +172,13 @@ in tree or out, and one registry holding both.
   `npu_mem` in full. Power stays in the node's `power` block. Do not add a
   spec value you have not measured without saying so in the file.
 - `resource_dirs(kind)` is how anything a platform ships as files is found:
-  `devices/`, `perf/<hardware>/<model>/<variant>/` bundles and
-  `models/<model_type>.yaml` catalogs, searched after the in-tree
-  locations by `trace_generator._variant_root()` /
-  `_arch_yaml_path()` and `profiler/core/config.py`. An out-of-tree
-  platform therefore needs no change to LLMServingSim to ship its own
-  devices, profiles and architectures.
+  `devices/`, `perf/<hardware>/<model>/<variant>/` bundles,
+  `models/<model_type>.yaml` catalogs and `configs/cluster/<name>.json`,
+  each searched after the in-tree locations by
+  `trace_generator._variant_root()` / `_arch_yaml_path()`,
+  `profiler/core/config.py` and `config_builder.resolve_cluster_config()`.
+  An out-of-tree platform therefore needs no change to LLMServingSim to
+  ship its own devices, profiles, architectures and deployments.
 
 `load_platform(name, meta, *, hardware, detect)` resolves, first hit wins:
 the explicit name (`--platform` on `python -m profiler` / `python -m
@@ -663,6 +664,16 @@ there are no experts to shard, so neither check applies.
 
 TP and EP share the same GPUs: non-MoE layers use TP (ALLREDUCE), MoE layers use EP
 (ALLTOALL). DP is achieved via multiple instances with the same `dp_group`.
+
+`--cluster-config` is resolved by `config_builder.resolve_cluster_config()`.
+A **path** is a location: absolute as it stands, relative to the repo root
+otherwise. A **bare name** is a lookup: the in-tree `configs/cluster/` first,
+then each registered platform's `configs/cluster/`, so a platform ships the
+deployments it was calibrated for and a run names one without knowing which
+package holds it. The two are kept apart on purpose -- a path naming a
+directory is never searched for by basename, so a mistyped directory fails
+where it was typed. A miss returns the repo-relative candidate, so the error
+names what the caller asked for.
 
 `config_builder.py` reads the cluster config and generates three ASTRA-Sim input files:
 - `astra-sim/inputs/network/network.yml` — topology and bandwidth

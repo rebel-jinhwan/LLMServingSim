@@ -95,9 +95,10 @@ def _runtime_limit(value):
 
 
 def _cluster_config_path(path):
-    if os.path.isabs(path):
-        return path
-    return os.path.join("..", path)
+    # The same search build_cluster_config does, so the overrides this reads
+    # and the config it builds are always the same file.
+    from .core.config_builder import resolve_cluster_config
+    return resolve_cluster_config(path)
 
 
 def _load_cluster_config_for_overrides(path):

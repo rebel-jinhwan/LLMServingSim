@@ -30,8 +30,10 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
   name wins, so a plugin cannot replace one; a plugin that fails to import or
   validate is logged and skipped. A plugin's `devices/`, `perf/` and `models/`
   directories are searched after the in-tree ones, so an out-of-tree platform
-  ships its own device specs, perf bundles and architecture catalogs without a
-  change to LLMServingSim. `$LLMSERVINGSIM_PLATFORM` and the instance's
+  ships its own device specs, perf bundles, architecture catalogs and cluster
+  configs without a change to LLMServingSim. `--cluster-config` now resolves by
+  name as well as by path, so a deployment a platform was calibrated for runs
+  without knowing which package holds its config. `$LLMSERVINGSIM_PLATFORM` and the instance's
   `hardware` now take part in resolution, and the profiler and bench detect the
   installed platform where the simulator, which models a platform rather than
   running on one, does not.

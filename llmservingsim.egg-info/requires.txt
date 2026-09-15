@@ -1,0 +1,9 @@
+pyyaml
+rich
+pandas
+numpy
+matplotlib
+huggingface_hub
+
+[dev]
+pytest
