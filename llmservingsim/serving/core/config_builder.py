@@ -316,9 +316,65 @@ def _sync_system_collective_dims(system_config_path, instances):
         json.dump(system_config, f, ensure_ascii=False, indent=2)
 
 
+def resolve_cluster_config(path):
+    """Where a --cluster-config may live, first hit wins.
+
+    A path is a location: absolute as it stands, relative to the repo root
+    otherwise (the simulator runs from astra-sim/, hence the ../). A bare
+    name is a lookup: the in-tree configs/cluster/ first, then each
+    registered platform's cluster/. A platform can therefore ship
+    the deployments it was calibrated for, the way it ships its devices/
+    and perf/, and a run names the config without knowing which
+    package holds it.
+
+    The two are kept apart on purpose. A path that names a directory is
+    never searched for by basename, so a mistyped directory fails where it
+    was typed instead of silently resolving to a different file.
+
+    A miss returns the repo-relative candidate, so the error names what the
+    caller asked for rather than the last place searched.
+    """
+    if os.path.isabs(path):
+        return path
+    candidates = [os.path.join('..', path)]
+    if not os.path.dirname(path):
+        candidates.append(os.path.join('..', 'configs', 'cluster', path))
+        from llmservingsim.platforms import resource_dirs
+        candidates += [str(d / path) for d in resource_dirs('cluster')]
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            return candidate
+    return candidates[0]
+
+
+def _resolve_perf_dirs(perf_dir, cluster_config_path):
+    """Bundle roots a cluster config names, as absolute paths.
+
+    ``perf_dir`` is one path or a list of them, each relative to the cluster
+    config itself, so a deployment shipped next to its own bundles states
+    where they are without knowing anyone's working directory. A root that
+    does not exist is refused here rather than at the first lookup, where it
+    would look like a missing profile instead of a wrong path.
+    """
+    if perf_dir is None:
+        return []
+    paths = [perf_dir] if isinstance(perf_dir, str) else list(perf_dir)
+    base = os.path.dirname(os.path.abspath(cluster_config_path))
+    roots = []
+    for p in paths:
+        root = p if os.path.isabs(p) else os.path.join(base, p)
+        root = os.path.normpath(root)
+        if not os.path.isdir(root):
+            raise FileNotFoundError(
+                f"perf_dir '{p}' in '{cluster_config_path}' is not a directory "
+                f"(resolved to '{root}')")
+        roots.append(root)
+    return roots
+
+
 # parse cluster configuration from JSON file and build config file for astra-sim
 def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading=False, enable_attn_offloading=False, inputs_root=None):
-    cluster_config_path = f'../{cluster_config_path}' # move out from astra-sim folder
+    cluster_config_path = resolve_cluster_config(cluster_config_path)
     
     try:
         with open(cluster_config_path, 'r') as f:
@@ -347,6 +403,7 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
     
     link_bw = cluster_config["link_bw"]
     link_latency = cluster_config["link_latency"]
+    perf_roots = _resolve_perf_dirs(cluster_config.get("perf_dir"), cluster_config_path)
 
     # Memory required keys
     mem_required_keys = ["mem_size", "mem_bw", "mem_latency"]
@@ -448,11 +505,16 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
 
         # Check if all required arguments are present in each instance
         # and resolve parallelism configuration
-        required_keys = ["model_name", "hardware", "npu_mem", "pd_type"]
+        required_keys = ["model_name", "hardware", "pd_type"]
         for instance in instances:
             for key in required_keys:
                 if key not in instance:
                     raise KeyError(f"Missing required key '{key}' in instance configuration.")
+
+            # Device facts come from platforms/<vendor>/devices/<hardware>.yaml;
+            # whatever the instance states in npu_mem overrides them key by key.
+            from llmservingsim.platforms import resolve_npu_mem
+            instance["npu_mem"] = resolve_npu_mem(instance["hardware"], instance.get("npu_mem"))
 
             # Resolve tp_size, pp_size, ep_size from partial config
             model_config = get_config(instance["model_name"])
@@ -554,7 +616,11 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
 
             for key in mem_required_keys:
                 if key not in npu_mem:
-                    raise KeyError(f"Missing required key '{key}' in 'npu_mem' configuration.")
+                    raise KeyError(
+                        f"Missing required key '{key}' in 'npu_mem' configuration for "
+                        f"hardware '{instance['hardware']}': state it in the cluster config, "
+                        f"or describe the device in platforms/<vendor>/devices/"
+                        f"{instance['hardware']}.yaml.")
             
             if not npu_mem_enabled:
                 # insert to system configuration
@@ -706,6 +772,7 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
         "pim_models": pim_models,
         "link_bw": link_bw,
         "link_latency": link_latency,
+        "perf_roots": perf_roots,
         "inputs_root": inputs_root,
         "network_config_path": network_config_path,
         "system_config_path": system_config_path,

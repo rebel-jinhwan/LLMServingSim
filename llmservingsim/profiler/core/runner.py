@@ -15,13 +15,16 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from llmservingsim.platforms import bundle_dir_name, load_platform
 from llmservingsim.profiler.core import logger as log
 from llmservingsim.profiler.core.categories import (
     CATEGORY_BY_NAME,
     Category,
     categories_for,
 )
-from llmservingsim.profiler.core.config import Architecture, ProfileArgs, load_architecture
+from llmservingsim.profiler.core.config import (
+    Architecture, ProfileArgs, load_architecture, mnbt_bumped,
+)
 from llmservingsim.profiler.core.engine import probe_limits, spin_down, spin_up
 from llmservingsim.profiler.core.hooks.timings import TimingSample
 from llmservingsim.profiler.core.writer import (
@@ -36,21 +39,19 @@ from llmservingsim.profiler.core.writer import (
 # ---------------------------------------------------------------------------
 
 def _variant_root(out_root: Path, args: ProfileArgs) -> Path:
-    """Build ``<out_root>/<hardware>/<model_path>/<variant>/``.
+    """Build ``<out_root>/<hardware>--<org>--<model>--<variant>/``.
 
-    Model path preserves the HuggingFace ``org/model`` layout so the
-    simulator's loader (which already expects this shape) doesn't need
-    to change. Local paths are normalized to their directory name.
+    One flat directory per bundle, spelled by ``bundle_dir_name`` -- the
+    same name the simulator looks for. A local model path is normalized to
+    its directory name; an HF id keeps its ``org/model``, which the name
+    joins with ``--`` the way the HuggingFace cache does.
     """
-    # If `args.model` is a local path (contains "/" and exists on disk),
-    # use its final component as the output subfolder; otherwise treat
-    # as HF id verbatim.
     model_as_path = Path(args.model)
     if model_as_path.exists() and model_as_path.is_dir():
         model_subpath = model_as_path.name
     else:
         model_subpath = args.model
-    return out_root / args.hardware / model_subpath / args.effective_variant
+    return out_root / bundle_dir_name(args.hardware, model_subpath, args.effective_variant)
 
 
 # ---------------------------------------------------------------------------
@@ -122,8 +123,16 @@ def _fire_one_category(
             raw = llm.collective_rpc(
                 "fire",
                 args=(shot.as_dict(), catalog_slice, category.name,
-                      args.measurement_iterations),
+                      args.measurement_iterations, args.platform),
             )
+            if hasattr(category, "extract_points_all_ranks"):
+                # A step profile keeps every worker: with pipeline
+                # parallelism each rank is a stage of its own.
+                per_rank_us = [float(d[0]["microseconds"]) for d in raw]
+                for point in category.extract_points_all_ranks(shot, per_rank_us, tp):
+                    sink.coalesce(point)
+                bar.advance(1)
+                continue
             # collective_rpc returns one result per worker (one per
             # TP rank). The timings are identical across ranks; take
             # rank 0's.
@@ -155,6 +164,7 @@ def run_full(
     """Profile every (tp, category) pair for this architecture × model."""
     arch = load_architecture(arch_path)
     variant_root = _variant_root(out_root, args)
+    platform = load_platform(args.platform)
 
     log.banner(args, variant_root)
 
@@ -171,7 +181,7 @@ def run_full(
         with log.stage(f"TP={tp}  booting vLLM engine"):
             llm, engine_kwargs, tmpdir = spin_up(args, tp)
             last_engine_kwargs = engine_kwargs
-            limits = probe_limits(llm)
+            limits = probe_limits(llm, bumped=mnbt_bumped(platform))
 
         # Visibility: what the live engine actually allocated for
         # this (tp, 1-layer-shrunk) configuration. Drives every
@@ -193,7 +203,7 @@ def run_full(
 
         try:
             if not args.only_skew:
-                for category in categories_for(arch, tp):
+                for category in categories_for(arch, tp, platform):
                     _fire_one_category(
                         llm, category, arch, args, limits, tp, tp_root,
                     )
@@ -202,8 +212,9 @@ def run_full(
                          "attention / moe categories")
             # Skew measurement after all categories — uses the same
             # attention kernel slice but fires shots with non-uniform
-            # decode kv distributions. Writes tp_root/skew.csv.
-            if not args.skip_skew:
+            # decode kv distributions. Writes tp_root/skew.csv. A step
+            # profile has no attention kernel to isolate, so none there.
+            if not args.skip_skew and platform.granularity == "layer":
                 from llmservingsim.profiler.core.skew import sample_skew
                 sample_skew(llm, arch, args, limits, tp, tp_root)
         finally:
@@ -261,7 +272,7 @@ def run_slice(
 
     with log.stage(f"TP={tp}  booting vLLM engine"):
         llm, engine_kwargs, tmpdir = spin_up(args, tp)
-        limits = probe_limits(llm)
+        limits = probe_limits(llm, bumped=mnbt_bumped(load_platform(args.platform)))
 
     tp_root = variant_root / f"tp{tp}"
     tp_root.mkdir(parents=True, exist_ok=True)

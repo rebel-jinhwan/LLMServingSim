@@ -48,7 +48,7 @@ if is_torch_flex_attn_available():
 
     from transformers.integrations.flex_attention import make_flex_block_causal_mask
 
-from profiler.common.timer import Timer
+from llmservingsim.profiler.common.timer import Timer
 
 
 # This makes `_prepare_4d_causal_attention_mask` a leaf function in the FX graph.

@@ -11,8 +11,15 @@ LOG_LEVEL="${LOG_LEVEL:-INFO}"
 PREFIX="${PREFIX:-}"
 TITLE_PREFIX="${TITLE_PREFIX:-vLLM vs LLMServingSim}"
 
-# Examples are keyed by <hardware>/<model>, matching the directory layout
-# under this folder.
+# An example is any directory holding a config.json, named on the command
+# line by its path under EXAMPLES_DIR -- <hardware>/<model> in tree, one
+# flat <hardware>--<model>--<variant> folder in some out-of-tree platforms.
+# Each carries its own config.json, so nothing has to be kept in sync with a
+# parallel configs/ tree. They live under this folder by default; an
+# out-of-tree platform ships its own, so point EXAMPLES_DIR at its examples/
+# folder and paths outside this repo are passed through absolute.
+EXAMPLES_DIR="${EXAMPLES_DIR:-$SCRIPT_DIR}"
+
 DEFAULT_EXAMPLES=(
     "RTXPRO6000/Llama-3.1-8B"
     "RTXPRO6000/Qwen3-32B"
@@ -20,28 +27,21 @@ DEFAULT_EXAMPLES=(
     "RTX4090/Llama-3.1-8B"
 )
 
+# Relative to the repo root when the path is inside it (the simulator runs
+# from astra-sim/ and prefixes ../), absolute when it is not.
 repo_relative_path() {
     local path="$1"
-    if [[ "$path" = /* ]]; then
-        case "$path" in
-            "$REPO_ROOT"/*)
-                printf '%s\n' "${path#"$REPO_ROOT"/}"
-                ;;
-            *)
-                echo "Path must live under the repo root: $path" >&2
-                exit 1
-                ;;
-        esac
-    else
-        printf '%s\n' "$path"
-    fi
+    case "$path" in
+        "$REPO_ROOT"/*) printf '%s\n' "${path#"$REPO_ROOT"/}" ;;
+        *) printf '%s\n' "$path" ;;
+    esac
 }
 
 validate_example() {
     local model_dir="$1"   # <hardware>/<model>
-    local vllm_dir="$SCRIPT_DIR/$model_dir/vllm"
-    local sim_csv="$SCRIPT_DIR/$model_dir/outputs/sim.csv"
-    local sim_log="$SCRIPT_DIR/$model_dir/outputs/sim.log"
+    local vllm_dir="$EXAMPLES_DIR/$model_dir/vllm"
+    local sim_csv="$EXAMPLES_DIR/$model_dir/outputs/sim.csv"
+    local sim_log="$EXAMPLES_DIR/$model_dir/outputs/sim.log"
     local vllm_dir_rel
     local sim_csv_rel
     local sim_log_rel
@@ -81,11 +81,20 @@ validate_example() {
 }
 
 if [[ $# -eq 0 ]]; then
-    set -- "${DEFAULT_EXAMPLES[@]}"
+    if [[ "$EXAMPLES_DIR" == "$SCRIPT_DIR" ]]; then
+        set -- "${DEFAULT_EXAMPLES[@]}"
+    else
+        # An out-of-tree examples folder has no curated list: run every
+        # directory holding a config.json, at either depth.
+        mapfile -t found < <(cd "$EXAMPLES_DIR" && find . -mindepth 2 -maxdepth 3 \
+            -name config.json -printf '%h\n' 2>/dev/null | sed 's|^\./||' | sort)
+        [[ ${#found[@]} -gt 0 ]] || { echo "No examples under $EXAMPLES_DIR" >&2; exit 2; }
+        set -- "${found[@]}"
+    fi
 fi
 
 for example in "$@"; do
-    if [[ -d "$SCRIPT_DIR/$example" ]]; then
+    if [[ -d "$EXAMPLES_DIR/$example" ]]; then
         validate_example "$example"
     else
         echo "Unknown example: $example" >&2

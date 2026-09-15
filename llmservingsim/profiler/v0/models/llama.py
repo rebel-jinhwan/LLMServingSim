@@ -47,7 +47,7 @@ from transformers.utils import TransformersKwargs, auto_docstring, can_return_tu
 from transformers.utils.generic import check_model_inputs
 from transformers.models.llama.configuration_llama import LlamaConfig
 
-from profiler.common.timer import Timer
+from llmservingsim.profiler.common.timer import Timer
 
 logger = logging.get_logger(__name__)
 

@@ -48,7 +48,7 @@ scripts/                      shared environment / build entry points (top-level
 ./scripts/docker-vllm.sh
 ```
 
-The official vLLM image (`vllm/vllm-openai:v0.19.0`, or `:v0.19.0-cu130`
+The official vLLM image (`vllm/vllm-openai:v0.24.0`, or `:v0.24.0-cu130`
 for CUDA 13.x GPUs — edit `scripts/docker-vllm.sh`) already includes every
 dependency the profiler needs: vllm, pydantic, pyyaml, rich,
 huggingface_hub. No extra pip installs.
@@ -191,7 +191,7 @@ The profiler:
 3. Writes the model config to a temp directory and spins vLLM up
    against it — no HF round-trip is needed after the first fetch.
 4. Sweeps dense / per-sequence / attention (and MoE if applicable)
-   shot grids, writing CSVs under `perf/<HW>/<MODEL>/<variant>/tp<N>/`.
+   shot grids, writing CSVs under `perf/<HW>--<MODEL>--<variant>/tp<N>/`.
 
 `<variant>` is auto-named from the weight + KV dtype (`bf16`,
 `bf16-kvfp8`, `fp8-kvfp8`, …) so different precisions land in
@@ -201,7 +201,7 @@ only for named runs (quantization schemes, experiments).
 ### 4. Use in simulation
 
 The simulator's `trace_generator.py` reads from
-`profiler/perf/<hardware>/<model>/<variant>/tp<N>/*.csv`
+`configs/perf/<hardware>--<model>--<variant>/tp<N>/*.csv`
 automatically when the cluster config names a matching hardware and
 the CLI selects a matching model.
 
@@ -240,7 +240,7 @@ not treated as a stable CLI.
 
 ## Output schema
 
-Each `perf/<hw>/<model>/<variant>/` directory contains one `meta.yaml`
+Each `perf/<hw>--<model>--<variant>/` directory contains one `meta.yaml`
 (profiler / vLLM version, GPU, timestamps, effective engine kwargs,
 compact sweep specs, skew fit summary) and one `tp<N>/` subfolder per
 profiled TP degree:

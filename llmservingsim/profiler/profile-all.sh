@@ -5,8 +5,8 @@
 #
 #     ./llmservingsim/profiler/profile-all.sh
 #
-# Each run writes to profiler/perf/<HARDWARE>/<MODEL>/<variant>/tp{1,2}/ — see
-# ./llmservingsim/profiler/profile.sh for the single-model equivalent.
+# Each run writes to configs/perf/<HARDWARE>--<MODEL>--<variant>/tp{1,2}/ — see
+# ./profiler/profile.sh for the single-model equivalent.
 # -----------------------------------------------------------------------------
 
 set -euo pipefail
@@ -33,7 +33,9 @@ cd "$REPO_ROOT"
 
 for MODEL in "${MODELS[@]}"; do
 
-    cmd=(python -m llmservingsim.profiler profile "$MODEL" --hardware "$HARDWARE")
+    # --out-root: the profiler defaults to ./perf; in tree the bundles live
+    # under configs/perf, next to the cluster and model configs.
+    cmd=(python3 -m llmservingsim.profiler profile "$MODEL" --hardware "$HARDWARE" --out-root configs/perf)
     cmd+=(--tp "$TP_DEGREES")
     cmd+=(--max-num-batched-tokens "$MAX_NUM_BATCHED_TOKENS")
     cmd+=(--max-num-seqs "$MAX_NUM_SEQS")
@@ -57,7 +59,7 @@ for MODEL in "${MODELS[@]}"; do
 done
 
 echo
-echo "All profiles done. Output under profiler/perf/$HARDWARE/:"
+echo "All profiles done. Output under configs/perf/$HARDWARE--*:"
 for MODEL in "${MODELS[@]}"; do
-    echo "  profiler/perf/$HARDWARE/$MODEL/"
+    echo "  configs/perf/$HARDWARE--${MODEL//\//--}--*"
 done

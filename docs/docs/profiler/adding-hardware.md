@@ -6,7 +6,7 @@ title: Adding new hardware
 # Adding new hardware
 
 This page is the workflow for bringing up a brand-new hardware target
-that doesn't have a profile bundle in `profiler/perf/<HARDWARE>/`
+that doesn't have a profile bundle in `configs/perf/<HARDWARE>--...`
 yet. There are two distinct paths depending on whether vLLM supports
 the hardware:
 
@@ -30,15 +30,15 @@ handles it. Three steps:
 
 ### 1. Confirm vLLM support
 
-The profiler runs vLLM `0.19.0` by default
-(`scripts/docker-vllm.sh` pulls `vllm/vllm-openai:v0.19.0`). Check
+The profiler runs vLLM `0.24.0` by default
+(`scripts/docker-vllm.sh` pulls `vllm/vllm-openai:v0.24.0`). Check
 that vLLM's release notes mention your GPU.
 
-| GPU family | vLLM 0.19.0 support |
+| GPU family | vLLM 0.24.0 support |
 | --- | --- |
 | NVIDIA A100, H100, H200 | Yes |
 | NVIDIA RTX PRO 6000, RTX 6000 Ada, L40S | Yes |
-| NVIDIA Blackwell (B100, B200) | Yes (with CUDA 13.x image: `v0.19.0-cu130`) |
+| NVIDIA Blackwell (B100, B200) | Yes (with CUDA 13.x image: `v0.24.0-cu130`) |
 | NVIDIA Hopper SXM | Yes |
 | AMD MI300X | Yes (ROCm path; needs `vllm/vllm-rocm`) |
 | AMD MI200 / older | Limited; check vLLM matrix |
@@ -74,7 +74,7 @@ For unusual GPU types, you may need to adjust:
 ```
 
 Wait. Drink coffee. Output lands in
-`profiler/perf/<HARDWARE>/<MODEL>/<variant>/`. See
+`configs/perf/<HARDWARE>--<MODEL>--<variant>/`. See
 **[Running → Expected runtime](./running#expected-runtime)** for
 ballpark times.
 
@@ -223,7 +223,7 @@ heterogeneous-decode measurements.
 
   ```text
   FileNotFoundError: No profile data for tp=[4] under
-  perf/<hw>/<model>/<variant>/. Re-run the profiler with TP_DEGREES
+  perf/<hw>--<model>--<variant>/. Re-run the profiler with TP_DEGREES
   including 4.
   ```
 
@@ -254,7 +254,7 @@ Once you've synthesized a CSV bundle:
 ## Where this gets used
 
 Once your CSV bundle lives at
-`profiler/perf/<HARDWARE>/<MODEL>/<variant>/`, the simulator picks
+`configs/perf/<HARDWARE>--<MODEL>--<variant>/`, the simulator picks
 it up automatically when the cluster config names matching values:
 
 ```json

@@ -22,10 +22,13 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+if TYPE_CHECKING:
+    from llmservingsim.platforms import PlatformSpec
 
 
 # ---------------------------------------------------------------------------
@@ -355,6 +358,11 @@ class ProfileArgs:
     model: str
     hardware: str
 
+    platform: str = "cuda"
+    """Which ``llmservingsim/platforms/<vendor>`` measures the shots and shapes the sweep
+    (``--platform``). Recorded in meta.yaml so the simulator picks the same
+    one up without a flag."""
+
     # TP sweep
     tp_degrees: list[int] = field(default_factory=lambda: [1])
 
@@ -369,6 +377,11 @@ class ProfileArgs:
     hf_overrides: dict[str, Any] | None = None
     """CLI-specified hf_overrides applied on top of the model config
     at vLLM load time."""
+
+    engine_kwargs: dict[str, Any] | None = None
+    """Extra ``vllm.LLM`` kwargs from ``--engine-kwargs``, merged last: the
+    knobs a deployment pins that have no flag of their own (block_size,
+    max_model_len, enable_expert_parallel, num_gpu_blocks_override, ...)."""
 
     model_config: dict[str, Any] | None = None
     """Full parsed ``configs/model/<path>.json`` — the source of
@@ -499,6 +512,15 @@ def _short_dtype(d: str) -> str:
 # merging don't have to import vLLM. These are profiler-critical — user
 # overrides via ProfileArgs are merged on top, but most of these should
 # not be changed (changing them breaks profiling correctness).
+
+def mnbt_bumped(platform: "PlatformSpec") -> bool:
+    """Whether the engine is booted with ``max_num_batched_tokens`` raised
+    by ``max_num_seqs``. The bump gives the layer-granularity sweeps room
+    for mixed shots past MNBT; a step sweep never mixes, and on a
+    step-granularity platform MNBT is the compiled prefill shape itself.
+    """
+    return platform.granularity == "layer"
+
 
 HOST_ENGINE_DEFAULTS: dict[str, Any] = {
     # Don't download checkpoints; we only measure kernel latency.

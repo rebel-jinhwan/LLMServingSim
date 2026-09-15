@@ -6,7 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PYTHON="${PYTHON:-python3}"
 
-BLOCK_SIZE="${BLOCK_SIZE:-16}"
+# Empty means "take it from the run's own meta.json"; set it to override.
+BLOCK_SIZE="${BLOCK_SIZE:-}"
 LOG_LEVEL="${LOG_LEVEL:-WARNING}"
 NETWORK_BACKEND="${NETWORK_BACKEND:-analytical}"
 TERM="${TERM:-xterm-256color}"
@@ -15,9 +16,15 @@ FORCE_COLOR="${FORCE_COLOR:-1}"
 
 export TERM LANG FORCE_COLOR
 
-# Examples are keyed by <hardware>/<model>, matching the directory layout
-# under this folder. Each one carries its own config.json, so nothing has
-# to be kept in sync with a parallel configs/ tree.
+# An example is any directory holding a config.json, named on the command
+# line by its path under EXAMPLES_DIR -- <hardware>/<model> in tree, one
+# flat <hardware>--<model>--<variant> folder in some out-of-tree platforms.
+# Each carries its own config.json, so nothing has to be kept in sync with a
+# parallel configs/ tree. They live under this folder by default; an
+# out-of-tree platform ships its own, so point EXAMPLES_DIR at its examples/
+# folder and paths outside this repo are passed through absolute.
+EXAMPLES_DIR="${EXAMPLES_DIR:-$SCRIPT_DIR}"
+
 DEFAULT_EXAMPLES=(
     "RTXPRO6000/Llama-3.1-8B"
     "RTXPRO6000/Qwen3-32B"
@@ -50,6 +57,27 @@ else:
 PY
 }
 
+# Like json_get, but a missing key is not an error: the block size lives in
+# different places across meta.json vintages, and the oldest have neither.
+json_get_opt() {
+    "$PYTHON" - "$1" "$2" <<'PY' 2>/dev/null || true
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as f:
+    obj = json.load(f)
+
+for part in sys.argv[2].split("."):
+    try:
+        obj = obj[part]
+    except (KeyError, TypeError):
+        sys.exit(0)
+
+if obj is not None:
+    print(obj)
+PY
+}
+
 resolve_repo_path() {
     local path="$1"
     if [[ "$path" = /* ]]; then
@@ -59,29 +87,22 @@ resolve_repo_path() {
     fi
 }
 
+# Relative to the repo root when the path is inside it (the simulator runs
+# from astra-sim/ and prefixes ../), absolute when it is not.
 repo_relative_path() {
     local path="$1"
-    if [[ "$path" = /* ]]; then
-        case "$path" in
-            "$REPO_ROOT"/*)
-                printf '%s\n' "${path#"$REPO_ROOT"/}"
-                ;;
-            *)
-                echo "Path must live under the repo root: $path" >&2
-                exit 1
-                ;;
-        esac
-    else
-        printf '%s\n' "$path"
-    fi
+    case "$path" in
+        "$REPO_ROOT"/*) printf '%s\n' "${path#"$REPO_ROOT"/}" ;;
+        *) printf '%s\n' "$path" ;;
+    esac
 }
 
 run_example() {
     local model_dir="$1"   # <hardware>/<model>
-    local meta="$SCRIPT_DIR/$model_dir/vllm/meta.json"
-    local config="$SCRIPT_DIR/$model_dir/config.json"
+    local meta="$EXAMPLES_DIR/$model_dir/vllm/meta.json"
+    local config="$EXAMPLES_DIR/$model_dir/config.json"
     local config_rel
-    local output_dir="$SCRIPT_DIR/$model_dir/outputs"
+    local output_dir="$EXAMPLES_DIR/$model_dir/outputs"
     local output_dir_rel
 
     [[ -f "$meta" ]] || { echo "Missing meta: $meta" >&2; exit 1; }
@@ -95,6 +116,7 @@ run_example() {
     local kv_cache_dtype
     local max_num_seqs
     local max_num_batched_tokens
+    local block_size
 
     dataset_rel="$(json_get "$meta" "dataset_path")"
     dataset_cli="$(repo_relative_path "$dataset_rel")"
@@ -104,6 +126,15 @@ run_example() {
     kv_cache_dtype="$(json_get "$meta" "engine_kwargs.kv_cache_dtype")"
     max_num_seqs="$(json_get "$meta" "engine_kwargs.max_num_seqs")"
     max_num_batched_tokens="$(json_get "$meta" "engine_kwargs.max_num_batched_tokens")"
+    # The block size the engine actually ran with. vLLM resolves it per
+    # platform -- 8192 on an RBLN-CR03, 16 on a GPU -- and a block is the
+    # scheduler's allocation unit, so simulating at the wrong one changes how
+    # much KV a batch holds, not just the bookkeeping. `kv_cache` carries the
+    # resolved value, `engine_kwargs` only what was asked for.
+    block_size="$BLOCK_SIZE"
+    [[ -n "$block_size" ]] || block_size="$(json_get_opt "$meta" "kv_cache.block_size")"
+    [[ -n "$block_size" ]] || block_size="$(json_get_opt "$meta" "engine_kwargs.block_size")"
+    [[ -n "$block_size" ]] || block_size=16
     config_rel="$(repo_relative_path "$config")"
     output_dir_rel="$(repo_relative_path "$output_dir")"
 
@@ -118,7 +149,7 @@ run_example() {
         --num-reqs "$num_reqs"
         --dtype "$dtype"
         --kv-cache-dtype "$kv_cache_dtype"
-        --block-size "$BLOCK_SIZE"
+        --block-size "$block_size"
         --max-num-seqs "$max_num_seqs"
         --max-num-batched-tokens "$max_num_batched_tokens"
         --log-level "$LOG_LEVEL"
@@ -133,6 +164,7 @@ run_example() {
     echo "Example: $model_dir"
     echo "Dataset: $dataset_cli"
     echo "Config:  $config_rel"
+    echo "Blocks:  $block_size tokens"
     echo "Output:  $output_dir_rel"
     echo "Running: ${cmd[*]}"
 
@@ -143,11 +175,20 @@ run_example() {
 }
 
 if [[ $# -eq 0 ]]; then
-    set -- "${DEFAULT_EXAMPLES[@]}"
+    if [[ "$EXAMPLES_DIR" == "$SCRIPT_DIR" ]]; then
+        set -- "${DEFAULT_EXAMPLES[@]}"
+    else
+        # An out-of-tree examples folder has no curated list: run every
+        # directory holding a config.json, at either depth.
+        mapfile -t found < <(cd "$EXAMPLES_DIR" && find . -mindepth 2 -maxdepth 3 \
+            -name config.json -printf '%h\n' 2>/dev/null | sed 's|^\./||' | sort)
+        [[ ${#found[@]} -gt 0 ]] || { echo "No examples under $EXAMPLES_DIR" >&2; exit 2; }
+        set -- "${found[@]}"
+    fi
 fi
 
 for example in "$@"; do
-    if [[ -d "$SCRIPT_DIR/$example" && -f "$SCRIPT_DIR/$example/config.json" ]]; then
+    if [[ -d "$EXAMPLES_DIR/$example" && -f "$EXAMPLES_DIR/$example/config.json" ]]; then
         run_example "$example"
     else
         echo "Unknown example: $example" >&2

@@ -112,7 +112,9 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
 # Build the python command with only the flags that are set.
-cmd=(python -m llmservingsim.profiler profile "$MODEL" --hardware "$HARDWARE")
+# --out-root: the profiler defaults to ./perf; in tree the bundles live
+# under configs/perf, next to the cluster and model configs.
+cmd=(python3 -m llmservingsim.profiler profile "$MODEL" --hardware "$HARDWARE" --out-root configs/perf)
 
 [[ -n "${TP_DEGREES:-}" ]]             && cmd+=(--tp "$TP_DEGREES")
 [[ -n "${DTYPE:-}" ]]                  && cmd+=(--dtype "$DTYPE")

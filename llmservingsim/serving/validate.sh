@@ -43,7 +43,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
 PYTHON="${PYTHON:-python3}"
-BASELINES="${BASELINES:-serving/validate-baselines.txt}"
+BASELINES="${BASELINES:-llmservingsim/serving/validate-baselines.txt}"
 LOG_DIR="${LOG_DIR:-$(mktemp -d)}"
 # mktemp -d creates it; an explicitly-set LOG_DIR may not exist yet, and every
 # redirect below would fail with the scenarios reporting FAIL for the wrong reason.
@@ -350,7 +350,7 @@ if [[ ${#changed[@]} -gt 0 || ${#changed_csv[@]} -gt 0 ]]; then
         echo
         echo "If the change is intended, land the new truth in the same PR:"
         echo
-        echo "1. \`./llmservingsim/serving/validate.sh --update\`, then commit \`serving/validate-baselines.txt\`."
+        echo "1. \`./llmservingsim/serving/validate.sh --update\`, then commit \`llmservingsim/serving/validate-baselines.txt\`."
         if [[ ${#changed_csv[@]} -gt 0 ]]; then
             echo "2. The run above already regenerated \`outputs/sim.csv\` and"
             echo "   \`validation/summary.txt\` in place -- commit them. Commit the three plots"

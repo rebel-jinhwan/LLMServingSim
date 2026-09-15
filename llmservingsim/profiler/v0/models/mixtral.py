@@ -49,7 +49,7 @@ from transformers.utils.deprecation import deprecate_kwarg
 from transformers.utils.generic import OutputRecorder
 from transformers.models.mixtral.configuration_mixtral import MixtralConfig
 
-from profiler.common.timer import Timer
+from llmservingsim.profiler.common.timer import Timer
 
 class MixtralBlockSparseTop2MLP(nn.Module):
     def __init__(self, config: MixtralConfig):

@@ -27,9 +27,17 @@ Source = "https://github.com/casys-kaist/LLMServingSim"
 # environment (scripts/install-vllm.sh, or the container image).
 dev = ["pytest"]
 
+# Installed for the import paths: `pip install -e .` is what makes
+# `import llmservingsim.serving` / `llmservingsim.platforms` work from
+# anywhere, so an out-of-tree platform plugin and `python tests/run.py` need
+# no PYTHONPATH.
 [tool.setuptools.packages.find]
 include = ["llmservingsim*"]
 exclude = ["llmservingsim.profiler.v0*"]
 
 [tool.setuptools.package-data]
+"llmservingsim.platforms" = ["*/devices/*.yaml"]
 "llmservingsim.profiler" = ["models/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

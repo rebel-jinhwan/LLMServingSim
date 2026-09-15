@@ -172,7 +172,7 @@ step is silently a no-op if the source is set to anything else.
 - **A fact the code owns does not go in prose.** Counts, file lists, flag sets,
   defaults: if a script or config decides it, prose that repeats it goes silently
   wrong the first time the code changes, and readers take prose as specification.
-  Write "every scenario in `serving/validate-baselines.txt`", not "58 scenarios".
+  Write "every scenario in `llmservingsim/serving/validate-baselines.txt`", not "58 scenarios".
   Sample output and quoted examples are exempt — readers already read a terminal
   block or a blockquote as a snapshot from one particular run. Point at the
   generator instead of mirroring it: `--list` and `--help` cannot go stale.

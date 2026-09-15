@@ -15,7 +15,7 @@ validate the simulator against ground truth.
 ```
 LLMServingSim/
 ├── llmservingsim/                       # The Python packages (`pip install -e .`)
-│   ├── serving/                         # Simulator (`python -m llmservingsim.serving`)
+│   ├── llmservingsim/serving/                         # Simulator (`python -m llmservingsim.serving`)
 │   │   ├── __main__.py                  # Simulation entry point + main loop
 │   │   ├── core/                        # Internals
 │   │   │   ├── scheduler.py             # vLLM-style continuous batching scheduler
@@ -31,11 +31,20 @@ LLMServingSim/
 │   │   │   ├── request.py               # Request/Batch data classes
 │   │   │   ├── block_pool.py            # Per-tier KV block pool + prefix-cache index
 │   │   │   ├── kv_cache_manager.py      # Tiered KV cache manager (block hashing, allocation)
+│   │   │   ├── vllm_scheduler.py        # Drives vLLM's own Scheduler (or a plugin's) in place of scheduler.py
 │   │   │   ├── logger.py                # Rich-based logger + stdio capture
 │   │   │   └── utils.py                 # Model config loading, formatting
 │   │   ├── run.sh                       # One runnable example per feature (a menu, not a suite)
 │   │   ├── validate.sh                  # every scenario vs recorded clocks + bench/examples digests
 │   │   └── validate-baselines.txt       # the recorded values; refresh with validate.sh --update
+│   ├── llmservingsim/platforms/                       # Platform plugins: how a vLLM hardware platform differs from CUDA
+│   │   ├── spec.py                      # PlatformSpec (name, granularity, profile_cls, bind_scheduler)
+│   │   │                                # and DeviceSpec (memory facts, fp8 support)
+│   │   ├── _registry.py                 # built-ins by package scan + `llmservingsim.platforms` entry points
+│   │   ├── __init__.py                  # load_platform(), load_device(), resolve_npu_mem(), resource_dirs()
+│   │   ├── profile.py                   # PlatformProfile: the profiler-side interface, CUDA defaults
+│   │   └── cuda/                        # CudaPlatform, profile.py (layerwise_profile)
+│   │       └── devices/                 # RTX4090.yaml, RTXPRO6000.yaml, H100.yaml
 │   ├── workloads/                       # ShareGPT/etc → JSONL workload generators
 │   │   └── generators/                  # `python -m llmservingsim.workloads.generators`
 │   ├── profiler/                        # vLLM-based layerwise profiler (`python -m llmservingsim.profiler`)
@@ -54,44 +63,47 @@ LLMServingSim/
 │   │   ├── v0/                          # Legacy (pre-rewrite) profiler, kept for reference
 │   │   ├── profile.sh                   # Editable user template (MODEL / HARDWARE / TP_DEGREES / …)
 │   │   └── profile-all.sh               # Helper: sweeps several MODELs × TP degrees
-    └── bench/                           # vLLM end-to-end benchmark + sim validation (`python -m llmservingsim.bench`)
-        ├── __main__.py                  # CLI dispatch (run / validate)
-        ├── core/                        # internals
-        │   ├── runner.py                # AsyncLLM driver, captures RequestStateStats
-        │   ├── recorder.py              # writes meta.json / requests.jsonl / timeseries.csv
-        │   ├── stat_logger.py           # custom vLLM StatLoggerBase that fills timeseries
-        │   ├── validate.py              # bench-vs-sim comparison entry point
-        │   ├── plots.py                 # throughput / running-waiting / latency-CDF plot helpers
-        │   └── logger.py                # Rich-based logger + stdio capture
-        ├── results/                     # output: llmservingsim/bench/results/<run_id>/ (gitignored)
-        ├── bench.sh                     # host-side wrapper for `python -m llmservingsim.bench run`
-        └── validate.sh                  # host-side wrapper for `python -m llmservingsim.bench validate`
+│   └── bench/                           # vLLM end-to-end benchmark + sim validation (`python -m llmservingsim.bench`)
+│       ├── __main__.py                  # CLI dispatch (run / validate)
+│       ├── core/                        # internals
+│       │   ├── runner.py                # AsyncLLM driver, captures RequestStateStats
+│       │   ├── recorder.py              # writes meta.json / requests.jsonl / timeseries.csv
+│       │   ├── stat_logger.py           # custom vLLM StatLoggerBase that fills timeseries
+│       │   ├── validate.py              # bench-vs-sim comparison entry point
+│       │   ├── plots.py                 # throughput / running-waiting / latency-CDF plot helpers
+│       │   └── logger.py                # Rich-based logger + stdio capture
+│       ├── bench.sh                     # host-side wrapper for `python -m llmservingsim.bench run`
+│       └── validate.sh                  # host-side wrapper for `python -m llmservingsim.bench validate`
 ├── configs/
-│   ├── cluster/                         # Cluster topology configs (hardware, memory, instances)
-│   ├── model/                           # Model architecture configs (subset of HF config.json)
-│   └── pim/                             # PIM device configs (DRAMSim3 INI format)
-├── workloads/                           # Bulk data, not packaged: request traces (.jsonl)
-│   └── examples/                        # Shell recipes that regenerate them
-├── profiler/                            # Bulk data, not packaged
-│   ├── perf/                            # <hw>/<model>/<variant>/tp<N>/{dense,per_sequence,attention,moe,skew,skew_fit}.csv
-│   └── power/                           # nvidia-smi / IPMI power-logging shell helpers
-├── bench/                               # Bulk data, not packaged
-│   └── examples/                        # committed end-to-end runs, keyed <hardware>/<model>/
-│       ├── <hw>/<model>/config.json     # the cluster config the example runs
-│       ├── <hw>/<model>/vllm/           # ground truth: meta.json, requests.jsonl, timeseries.csv
-│       ├── <hw>/<model>/outputs/        # sim.csv, sim.log
-│       ├── <hw>/<model>/validation/     # summary.txt + plots
-│       ├── run.sh                       # re-run the simulator side: run.sh <hardware>/<model>
-│       └── validate.sh                  # re-run the comparison: validate.sh <hardware>/<model>
-├── pyproject.toml                       # `pip install -e .` for the import paths (not published)
-├── scripts/                             # Shared shell entry points (env / build, not module-specific)
-│   ├── docker-vllm.sh                   # vLLM container (profiler + bench)
-│   ├── docker-sim.sh                    # simulator container
-│   ├── install-vllm.sh                  # bare-metal vLLM install (uv venv)
-│   └── compile.sh                       # ASTRA-Sim + Chakra build
-└── astra-sim/                           # ASTRA-Sim C++ backend (submodule)
-    ├── inputs/                          # Generated configs (network, memory, system)
-    └── extern/graph_frontend/chakra/    # Chakra trace converter
+│   ├── cluster/                # Cluster topology configs (hardware, memory, instances)
+│   ├── model/                  # Model architecture configs (subset of HF config.json)
+│   ├── perf/                   # Profiled latencies, one flat folder per bundle:
+│   │                           #   <hw>--<org>--<model>--<variant>/tp<N>/{dense,per_sequence,attention,moe,skew,skew_fit}.csv
+│   └── pim/                    # PIM device configs (DRAMSim3 INI format)
+├── workloads/                  # Request trace datasets (.jsonl) + the shell recipes that regenerate them
+├── profiler/
+│   └── power/                  # nvidia-smi / IPMI power-logging helpers
+├── bench/
+│   ├── results/                # output: bench/results/<run_id>/ (gitignored)
+│   └── examples/               # committed end-to-end runs, keyed <hardware>/<model>/
+│       ├── <hw>/<model>/config.json   # the cluster config the example runs
+│       ├── <hw>/<model>/vllm/         # ground truth: meta.json, requests.jsonl, timeseries.csv
+│       ├── <hw>/<model>/outputs/      # sim.csv, sim.log
+│       ├── <hw>/<model>/validation/   # summary.txt + plots
+│       ├── run.sh              # re-run the simulator side: run.sh <hardware>/<model>
+│       └── validate.sh         # re-run the comparison: validate.sh <hardware>/<model>
+├── tests/                      # Unit checks (`python tests/run.py`); pytest reads the same files
+│   ├── run.py                  # Discover tests/test_*.py, call every test_*(), report
+│   └── demo_logger.py          # Not a test: prints every logger surface, for looking at
+├── pyproject.toml              # `pip install -e .` for the import paths (not published)
+├── scripts/                    # Shared shell entry points (env / build, not module-specific)
+│   ├── docker-vllm.sh          # vLLM container (profiler + bench)
+│   ├── docker-sim.sh           # simulator container
+│   ├── install-vllm.sh         # bare-metal vLLM install (uv venv)
+│   └── compile.sh              # ASTRA-Sim + Chakra build
+└── astra-sim/                  # ASTRA-Sim C++ backend (submodule)
+    ├── inputs/                 # Generated configs (network, memory, system)
+    └── extern/graph_frontend/chakra/  # Chakra trace converter
 ```
 
 Per-paper artifact evaluation scripts (the previous `evaluation/`
@@ -114,7 +126,7 @@ are not part of the main branch's tree.
 ### Key data flow
 
 ```
-profiler/perf/<hw>/<model>/<variant>/tp<N>/*.csv (profiled latencies)
+configs/perf/<hw>--<model>--<variant>/tp<N>/*.csv (profiled latencies)
     ↓ _load_perf_db() + _lookup_{dense,per_sequence,attention,moe}()
 trace_generator.py → per-layer field tuples (TraceData)
     ↓ Chakra converter, in-process, via LLMConverter.convert_rows()
@@ -133,17 +145,197 @@ scheduler.py → next iteration
 - **Internal Python**: use underscores (`max_num_seqs`, `enable_chunked_prefill`)
 - **JSON config filenames**: descriptive snake_case (`single_node_pim_instance.json`)
 - **Imports**: keep minimal and consistent; `llmservingsim/serving/` modules use relative imports
-- **`pip install -e .`** puts the packages on the import path as
-  `llmservingsim.serving`, `llmservingsim.profiler`, `llmservingsim.bench` and
-  `llmservingsim.workloads`, so nothing needs a `PYTHONPATH` and every entry
-  point is `python -m llmservingsim.<pkg>`. Only code and the architecture
-  yamls live in the package; every bulk-data directory keeps its own name at the
-  repository root — `configs/`, `workloads/`, `profiler/{perf,power}/`,
-  `bench/examples/`, `astra-sim/`, `scripts/`, `docs/` and `outputs/`. Those
-  paths are therefore unchanged: the namespace move touched only the code
+- **`pip install -e .`** puts `serving`, `platforms`, `profiler`, `bench` and
+  `workloads` on the path, so an out-of-tree platform plugin and `tests/` need
+  no `PYTHONPATH`. The package names are the repository's own directories,
+  which are too generic to publish; moving them under an `llmservingsim`
+  namespace is packaging work and has not happened
 - **Comments**: use English only — no Korean or other non-English text in comments, docstrings, or log messages
 
 ## Architecture Patterns
+
+### Platforms (`llmservingsim/platforms/`)
+vLLM runs on non-CUDA hardware through out-of-tree platform plugins
+(`vllm.platform_plugins` entry points; `vllm-rbln` is one). `llmservingsim/platforms/` is
+the simulator's counterpart, built the same way: one `PlatformSpec` subclass
+per platform, in tree or out, and one registry holding both.
+
+- `llmservingsim/platforms/spec.py::PlatformSpec` is the whole interface: `name`,
+  `granularity`, `is_available()`, `profile_cls`, `bind_scheduler()`,
+  `resource_dir` / `resources(kind)`. Defaults are CUDA vLLM's, so a
+  platform overrides only what differs. Each hook has a resolved counterpart
+  the callers read: `spec.profile` builds `profile_cls` once and refuses one
+  that is not a `PlatformProfile`, or a step-granularity platform whose
+  profile does not override `step_grid`; reading `spec.scheduler` runs
+  `bind_scheduler()` once, which assigns `self.scheduler` or nothing, and
+  binds the in-tree port when nothing was assigned, which is what CUDA vLLM
+  does. The setter refuses anything that is not a class.
+  Two rules keep a spec constructible on a host without the hardware, which
+  is what lets the simulator model a platform it cannot run on: importing
+  the module and constructing the spec touch neither the hardware nor its
+  SDK, and vLLM, torch and vendor SDKs are imported inside the member that
+  needs them. `is_available()` is the only probe, and only the profiler and
+  bench consult it.
+- `llmservingsim/platforms/_registry.py` discovers both kinds: built-ins by scanning the
+  subpackages of `llmservingsim/platforms/` for `PlatformSpec` subclasses (no
+  registration list), out-of-tree ones through the `llmservingsim.platforms`
+  entry-point group. Built-ins register first and the first spec with a
+  given name wins, so a plugin cannot silently replace one; a plugin that
+  fails to import or fails `validate_spec` is logged and skipped. The
+  entry-point name must equal the spec's `name`. Built once per process.
+- `profile.py`: the `PlatformProfile` subclass `profile_cls` returns. The
+  base holds the CUDA defaults: `ENGINE_KWARGS` merged over
+  `HOST_ENGINE_DEFAULTS` (default `{}`), `TP_EMULATION` (default `True`:
+  shrink `SHARD_FIELDS` on one GPU; `False` boots real ranks when the
+  collectives are inside the compiled graph), `scheduler_output_cls()`
+  (default vLLM's `SchedulerOutput`), `device_info()` for meta.yaml,
+  `measure(run_forward, iterations, catalog_slice)` (abstract; cuda uses
+  `layerwise_profile`) and `step_grid(args, limits)` (raises by default).
+  The base imports nothing heavy at module scope, so `platforms` still
+  loads in the simulator container.
+- `llmservingsim/platforms/spec.py::DeviceSpec` is one piece of hardware, read from a
+  platform's `devices/<hardware>.yaml`. A device is **data, not behaviour**:
+  a device differs from another device in its numbers, while a platform
+  differs from another platform in its code, so there is one yaml per device
+  and no subclass. It holds hardware facts only, flat: `mem_size`, `mem_bw`,
+  `mem_latency` (`NPU_MEM_KEYS`, the keys of a cluster config's `npu_mem`
+  block they default, exposed together as `device.npu_mem`), and two
+  booleans, both default false: `support_fp8` (fp8 weights) and
+  `support_fp8_kv` (an fp8 KV cache in the attention kernel). They are two
+  flags because they come apart in practice: RBLN-CR03 runs an fp8
+  checkpoint with a bf16 KV cache. There is no list of KV dtypes: `auto` is
+  the model's dtype and always runs, every `fp8*` variant needs
+  `support_fp8_kv`, and `device.supports_kv_cache_dtype()` is what the
+  simulator and the profiler ask, the profiler before booting, which also
+  refuses `--dtype fp8` where `support_fp8` is false. `DeviceSpec.from_yaml()`
+  refuses a name that does not match the filename, a missing or non-numeric
+  memory field, a nested `npu_mem:` block (that shape is the cluster
+  config's), an unknown key (`mem_util` belongs to a deployment, not a device,
+  and would otherwise be silently ignored), a non-boolean flag, and
+  `support_fp8_kv` without `support_fp8`. `platforms.devices()` builds them
+  all once per process, so a bad yaml or a device two platforms both claim
+  fails at discovery rather than at the point of use;
+  `platforms.load_device()` looks one up and reports the owning platform, so
+  a cluster config naming the hardware is enough to resolve the platform;
+  `npu_mem_with()` (through `resolve_npu_mem()` in `config_builder.py`)
+  merges the instance's `npu_mem` over it key by key; the simulator and the
+  profiler both refuse a `kv_cache_dtype` outside the list, the profiler
+  before booting. A device with no spec still works when the cluster config
+  states `npu_mem` in full. Power stays in the node's `power` block. Do not
+  add a spec value you have not measured without saying so in the file.
+- `resource_dirs(kind)` is how anything a platform ships as files is found:
+  `devices/`, `perf/<hardware>--<model>--<variant>/` bundles,
+  and `cluster/<name>.json`, each searched after the in-tree
+  locations by `trace_generator._variant_root()` and
+  `config_builder.resolve_cluster_config()`. An out-of-tree platform
+  therefore needs no change to LLMServingSim to ship its own devices,
+  profiles and deployments. Only `devices/` has to be inside the package,
+  because it is what makes a cluster config's `hardware` resolve and pip
+  ships nothing outside the package. Perf bundles have their own lifecycle
+  (re-measured per SDK release, often private, potentially large), so they
+  are also found by path: a cluster config's `perf_dir` (one path or a list,
+  each relative to the config file) names the roots
+  `trace_generator._variant_root()` searches first, and
+  `python -m llmservingsim.profiler` writes into `./perf` under the working directory.
+  A vendor keeps `perf/` at its repository root, or in a private data
+  repository, and each deployment's config points at it;
+  `config_builder._resolve_perf_dirs()` refuses one that is not a directory,
+  so a typo fails as a wrong path rather than a missing profile.
+  Architecture catalogs (`llmservingsim/profiler/models/`) are
+  deliberately not a platform resource: a catalog describes a model, not
+  the hardware it runs on, so a missing `model_type` is contributed
+  upstream rather than shipped by a vendor.
+
+`load_platform(name, meta, *, hardware, detect)` resolves, first hit wins:
+the explicit name (`--platform` on `python -m llmservingsim.profiler` /
+`python -m llmservingsim.serving`), the `platform` key of the perf bundle's meta.yaml (the profiler
+writes it, so a simulation run needs no flag), `$LLMSERVINGSIM_PLATFORM`,
+the platform whose `devices/` describes the instance's hardware, the one
+platform whose `is_available()` is true (only with `detect=True`, which the
+profiler and bench pass because they run on the hardware; the simulator
+never does), and cuda. More than one available platform raises and names
+the env var.
+
+**Granularity.** `layer` is the CUDA default: per-kernel CSVs, a trace row
+per canonical layer, ASTRA-Sim adds the collectives. `step` is for a device
+that runs a compiled graph per padded shape: the profiler measures each
+forward whole into `tp<N>/step.csv` (same 4D key as attention), skips skew,
+boots every layer (no `num_hidden_layers=1`) and does not bump MNBT (see
+`config.mnbt_bumped`), and the trace generator emits one `step` row per
+iteration (`_synthesize_step_trace`) with no comm row. `_lookup_step` snaps
+the batch to the shapes the CSV holds before the kv-axis interpolation: a
+prefill chunk to the profiled chunk (the runner pads every prefill to
+`max_num_batched_tokens`), a decode batch up to the next profiled `n_decode`
+(the runner's buckets). The shapes are read off the CSV, so a denser profile
+needs no simulator change. Attention offloading is refused at step granularity
+because it hangs off per-layer rows. P/D works: a prefill instance's stage rows
+carry that stage's KV bytes in `comm_size`, and the patched Chakra converter
+(`scripts/patches/chakra-step-trace.patch`) emits the send and receive after a row
+whose name starts with `step` the way it does after `qkv_proj`.
+
+**vLLM-driven scheduler.** `VllmScheduler` does what `EngineCore` does on the
+host: `EngineArgs(...).create_engine_config()` from a tmpdir holding
+`configs/model/<model>.json`, `scheduler_config.get_scheduler_cls()`, a
+`KVCacheConfig` sized from the memory model's block count, then
+`schedule()` / `update_from_output()` around the simulated forward with a
+`ModelRunnerOutput` carrying one token per request that reached the end of
+what it has. It keeps the port's outward shape, so the main loop, DP barrier
+and trace generator are unchanged. `--scheduler vllm` selects it for any
+platform (needs vLLM importable; the CPU wheel is enough:
+`pip install vllm==0.24.0 --extra-index-url https://wheels.vllm.ai/0.24.0/cpu`).
+`tests/test_vllm_scheduler.py` runs the port and it on the same
+ShareGPT requests: identical batches while nothing is preempted; under KV
+pressure vLLM's `BlockPool` keeps block 0 as the null block, so it has one
+usable block fewer and preempts one step earlier, and with that block
+returned the runs are identical. P/D follows vLLM's NIXL flow: a prefill
+instance runs each request with `max_tokens=1`, as vLLM's disaggregation proxy
+does, hands it on without recording a token (the proxy discards it), and a
+decode instance carries vLLM's `DecodeBenchConnector`, whose scheduler side
+reports every prompt token but the last as present. That is where NIXL leaves a
+decode request once its KV arrives (`_update_waiting_for_remote_kv` backs off
+one token on a full-prompt hit), so decode's first step computes one token and
+emits the first output token. NIXL's asynchronous wait for one more step is not
+modelled. Not modelled by it: `--prefix-storage`, a KV connector in vLLM that
+sits below the
+scheduler; the port models it directly. When a vLLM platform plugin is
+installed in the simulator environment its `check_and_update_config` runs
+too, so the run must carry the deployment's environment (the plugin's own
+`VLLM_*` variables: the wrong ones and it installs a different scheduler
+than the deployment runs) and `--engine-kwargs` carries the knobs without a
+flag (`max_model_len`, ...).
+
+**Calibration knobs for a step bundle.** `--step-overhead-us` (every step)
+and `--prefill-step-overhead-us` (on top, for a step carrying a prefill
+chunk), also per instance in the cluster config, carry the host time the
+profiled `execute_model` does not include; fit them against a bench run
+after `mem_util` is matched to `num_gpu_blocks`. They are per deployment,
+not per device: a single-device decode step of 5 ms carries proportionally
+far more host time than a four-device MoE step of 30 ms. Fit each knob from
+one measurement rather than a blind grid; with P/D, the servers' own
+Prometheus metrics split the latency into exactly the four parts the knobs
+cover (decode `step_overhead_us` from `inter_token_latency_seconds`, prefill
+`prefill_step_overhead_us` from the prefill server's
+`e2e_request_latency_seconds` against the bundle's prefill time, `link_bw`
+from `nixl_xfer_time_seconds` and `nixl_bytes_transferred`, and
+`link_latency` last, against TTFT, because it counts about three times: the
+link carries the output hand-off too). NIXL moves whole blocks once a
+request's prefill is done, so the vLLM-driven scheduler sends each request's
+KV on its final prefill step, rounded up to blocks, and the client's first
+token comes from decode, so TTFT spans both servers plus the proxy. The
+proxy is vLLM's `tests/v1/kv_connector/nixl_integration/toy_proxy_server.py`;
+`python -m llmservingsim.bench run` drives one engine, so a P/D ground-truth run needs a
+client that replays the workload through the proxy and writes
+`requests.jsonl` in bench's shape.
+
+**Out-of-tree examples.** `bench/examples/run.sh` and `validate.sh` take
+`EXAMPLES_DIR`, so a platform that lives outside this repository keeps its
+calibrated examples next to itself and still runs them through the in-tree
+runner; paths outside the repo root are passed through absolute. The worked
+case is [`llmservingsim-rbln`](https://github.com/rebel-jinhwan/llmservingsim-rbln),
+which ships the `rbln` platform, the `RBLN-CR03` device spec, its step
+bundles and four calibrated examples (MiniMax-M2.5 tp4+EP and pp4,
+gpt-oss-120b, and a Llama-3.2-1B P/D pair over NIXL). Vendor-specific
+knowledge belongs in that repository's README, not here.
 
 ### Profiler (`llmservingsim/profiler/`)
 The profiler uses vLLM's built-in `layerwise_profile()` via a worker extension class to
@@ -169,7 +361,7 @@ developed in this repo.
 Each run produces a per-category CSV bundle:
 
 ```
-perf/<hw>/<model>/<variant>/
+perf/<hw>--<model>--<variant>/
   meta.yaml                              profiler/vLLM version, effective engine kwargs, GPU,
                                          timestamps, compact sweep specs, skew_fit summary
   tp<N>/
@@ -186,8 +378,8 @@ perf/<hw>/<model>/<variant>/
 `tp_stable: true` in the yaml (layernorms, sampler) are profiled once at TP=1 and
 replicated into other `tp<N>/` folders by the writer.
 
-The profiler Docker uses **vLLM v0.19.0** (`vllm/vllm-openai:v0.19.0` or
-`v0.19.0-cu130` for CUDA 13.x). The MoE hook patches `FusedMoE.forward_native` for
+The profiler Docker uses **vLLM v0.24.0** (`vllm/vllm-openai:v0.24.0` or
+`v0.24.0-cu130` for CUDA 13.x). The MoE hook patches `FusedMoE.forward_native` for
 forced expert routing — method name is version-specific.
 
 ### Skew profiling & alpha fit
@@ -356,7 +548,7 @@ KV-bandwidth read). Log blending of a per-axis-linear function is
 convex-biased upward by up to +6.0% per axis on a doubling grid, and
 leave-one-out over the measured grid puts it at +11.6% to +14.4% mean
 error against +2.3% to +3.7% for linear, across every bundle in
-`profiler/perf/`. Don't "restore" log space because the sweep is
+`configs/perf/`. Don't "restore" log space because the sweep is
 geometric. Latencies are stored as microseconds in the
 CSVs and converted to nanoseconds at load time. No calibration scaling —
 profiled latencies are used directly.
@@ -373,9 +565,11 @@ is `pc={pc}|{n_label}|{sr_label}|{kvb_label}|{kp_label}`, built against
 older profiles). `_hydrate_skew_fit_tables()` reads each TP's `skew_fit.csv`
 into the in-memory `alpha_by_bucket` map on first load.
 
-Profile CSV path: `profiler/perf/<hardware>/<model>/<variant>/tp<N>/{dense,
+Profile CSV path: `configs/perf/<hardware>--<model>--<variant>/tp<N>/{dense,
 per_sequence,attention,moe,skew,skew_fit}.csv` (resolved as
-`../profiler/perf/...` from the `astra-sim/` working directory).
+`../configs/perf/...` from the `astra-sim/` working directory), after any
+root the cluster config's `perf_dir` names and before a platform package's
+`perf/`. One flat folder per bundle, spelled by `platforms.bundle_dir_name()`.
 
 Variant resolution: `trace_generator.resolve_variant(dtype, kv_cache_dtype,
 model_config)` mirrors the profiler's `effective_variant` — weight dtype is
@@ -504,7 +698,12 @@ The simulator loads these via `get_config(model_name)` in `utils.py`.
 
 ### Cluster configs
 Cluster configs in `configs/cluster/` define hardware topology. Key instance fields:
-- `hardware`: must match a directory name in `profiler/perf/<hardware>/`
+- `hardware`: must be the `<hardware>` prefix of a bundle folder in `configs/perf/`, and names
+  `llmservingsim/platforms/<vendor>/devices/<hardware>.yaml` when one exists
+- `npu_mem`: optional when the device has a spec. Any of `mem_size`, `mem_bw`,
+  `mem_latency` stated here overrides the spec's top-level value of the same
+  name; state only what differs for this deployment. A device without a spec
+  needs all three
 - `model_name`: must match a config in `configs/model/{model_name}.json`
 - `num_npus`: total GPUs for the instance (optional, inferred from `tp_size * pp_size`)
 - `tp_size`: tensor parallel degree (required or inferred)
@@ -534,6 +733,16 @@ there are no experts to shard, so neither check applies.
 
 TP and EP share the same GPUs: non-MoE layers use TP (ALLREDUCE), MoE layers use EP
 (ALLTOALL). DP is achieved via multiple instances with the same `dp_group`.
+
+`--cluster-config` is resolved by `config_builder.resolve_cluster_config()`.
+A **path** is a location: absolute as it stands, relative to the repo root
+otherwise. A **bare name** is a lookup: the in-tree `configs/cluster/` first,
+then each registered platform's `cluster/`, so a platform ships the
+deployments it was calibrated for and a run names one without knowing which
+package holds it. The two are kept apart on purpose -- a path naming a
+directory is never searched for by basename, so a mistyped directory fails
+where it was typed. A miss returns the repo-relative candidate, so the error
+names what the caller asked for.
 
 `config_builder.py` reads the cluster config and generates three ASTRA-Sim input files:
 - `astra-sim/inputs/network/network.yml` — topology and bandwidth
@@ -652,8 +861,8 @@ These must match the C++ enum in `astra-sim/astra-sim/system/AstraMemoryAPI.hh`.
 
 ### Docker environments
 - **vLLM container** (used by `python -m llmservingsim.profiler`, `python -m llmservingsim.bench`, and
-  `python -m llmservingsim.workloads.generators`): `vllm/vllm-openai:v0.19.0` (or
-  `v0.19.0-cu130` for CUDA 13.x)
+  `python -m llmservingsim.workloads.generators`): `vllm/vllm-openai:v0.24.0` (or
+  `v0.24.0-cu130` for CUDA 13.x)
   - Launched via `scripts/docker-vllm.sh`
   - Mounts the **LLMServingSim repo root** as `/workspace`; container cwd
     is `/workspace`, so `python -m llmservingsim.profiler …` etc. work directly
@@ -664,6 +873,9 @@ These must match the C++ enum in `astra-sim/astra-sim/system/AstraMemoryAPI.hh`.
   - Launched via `scripts/docker-sim.sh`
   - Mounts the repo root at `/app/LLMServingSim`; ASTRA-Sim + Chakra are
     built inside via `scripts/compile.sh` on first use
+  - `--scheduler vllm`, and any platform that names a vLLM scheduler,
+    additionally need vLLM (CPU wheel) and that platform's vLLM plugin
+    importable inside it
 
 ## README and docs split
 
@@ -692,8 +904,10 @@ website (not the README).
 
 ## Testing & Validation
 
-No unit-test suite. The simulator is deterministic, so validation is exact
-equality against recorded results:
+Unit checks live in `tests/` and run with `python tests/run.py`. They cover
+the parts that simulating does not: the block pool, the KV cache manager, the
+platform registry. The simulator itself is deterministic, so its validation is
+exact equality against recorded results:
 
 1. **`./llmservingsim/serving/validate.sh`** — the whole check, ~8 min. Stage 1 compares every
    scenario against the `Total clocks (ns)` recorded in
@@ -709,7 +923,17 @@ equality against recorded results:
    three plots. A changed `sim.csv` makes those stale, so regenerate and commit
    them in the same commit.
 3. For profiler changes: edit `MODEL` / `HARDWARE` in `llmservingsim/profiler/profile.sh`
-   and run `./llmservingsim/profiler/profile.sh` from the repo root inside the vLLM container.
+   and run `./profiler/profile.sh` from the repo root inside the vLLM container.
+4. `python tests/run.py` runs the unit checks: the block pool, the tiered KV
+   cache manager, model config loading, every registered platform's device
+   specs and `npu_mem` merge, out-of-tree discovery through fake entry points,
+   and the in-tree scheduler against vLLM's own. Plain `test_*()` functions
+   that assert, no framework and no dependency; pytest picks up the same files.
+   A check that cannot run here raises `unittest.SkipTest`, so an environment
+   without vLLM skips rather than fails, and so does one with a vLLM **platform
+   plugin** active, because the scheduler check compares against upstream vLLM
+   (`VLLM_PLUGINS= python tests/run.py test_vllm_scheduler` runs it anyway).
+   See `tests/README.md`
 
 A scenario whose clock equals an existing one exercises flag parsing and
 nothing else. Several knobs only bite once the KV cache is saturated, which is

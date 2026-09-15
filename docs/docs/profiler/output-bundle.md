@@ -6,7 +6,7 @@ title: Output bundle
 # Output bundle
 
 Each profile run produces a directory tree under
-`profiler/perf/<HARDWARE>/<MODEL>/<variant>/`. This is **the contract
+`configs/perf/<HARDWARE>--<MODEL>--<variant>/`. This is **the contract
 between the profiler and the simulator**: anything that lands here
 in the right format is consumable by
 `trace_generator._load_perf_db()`, regardless of how it was produced.
@@ -14,7 +14,7 @@ in the right format is consumable by
 ## Folder layout
 
 ```
-profiler/perf/<HARDWARE>/<MODEL>/<variant>/
+configs/perf/<HARDWARE>--<MODEL>--<variant>/
 ├── meta.yaml
 └── tp<N>/                        # one folder per profiled TP degree
     ├── dense.csv
@@ -22,8 +22,14 @@ profiler/perf/<HARDWARE>/<MODEL>/<variant>/
     ├── attention.csv
     ├── moe.csv                   # MoE models only
     ├── skew.csv                  # skew-enabled runs only
-    └── skew_fit.csv              # skew-enabled runs only
+    ├── skew_fit.csv              # skew-enabled runs only
+    └── step.csv                  # step-granularity platforms only, instead of the above
 ```
+
+A bundle from a `step`-granularity platform (see
+**[Platforms](../simulator/platforms)**) holds only `step.csv` per TP
+folder: the whole forward's time per padded shape, with the same four
+key columns as `attention.csv`.
 
 `<variant>` is auto-named from the dtype combination
 (`bf16`, `bf16-kvfp8`, `fp8-kvfp8`, …): see
@@ -206,7 +212,7 @@ value, and `kv_big` extends its log-4x bins to the observed maximum.
 ## `meta.yaml`
 
 Sibling of the `tp<N>/` folders. Below is a real one, from
-`profiler/perf/RTXPRO6000/Qwen/Qwen3-32B/bf16/`, with the per-TP fit
+`configs/perf/RTXPRO6000--Qwen--Qwen3-32B--bf16/`, with the per-TP fit
 block trimmed to one entry:
 
 ```yaml
@@ -287,7 +293,8 @@ skew_fit:
 | Key | Meaning |
 | --- | --- |
 | `profiler_version` / `vllm_version` / `cuda_version` | Versions the bundle was produced with. Kernel timings shift a few percent across CUDA driver versions, so this is the field to check before trusting a mixed comparison |
-| `gpu` | The **driver's** device name, verbatim |
+| `gpu` | The **driver's** device name, verbatim (an NPU name for a non-CUDA platform) |
+| `platform` / `granularity` | Which `llmservingsim/platforms/<vendor>` produced the bundle and whether it is per-`layer` or per-`step`. The simulator reads both: the first picks the scheduler, the second the trace shape |
 | `hardware` | The `--hardware` label, i.e. the folder name and the value a cluster config's `hardware` field must match. Distinct from `gpu` |
 | `architecture` / `architecture_sha256` | Which `llmservingsim/profiler/models/*.yaml` was used, and its hash — so you can tell whether a catalog edit invalidates the bundle |
 | `model` / `variant` / `tp_degrees` | What was profiled |
@@ -346,7 +353,7 @@ time.
 
 ```mermaid
 flowchart LR
-    PERF["perf/&lt;hw&gt;/&lt;model&gt;/&lt;variant&gt;/"] --> RESOLVE["resolve_variant<br/>(dtype + kv_cache_dtype)"]
+    PERF["perf/&lt;hw&gt;--&lt;model&gt;--&lt;variant&gt;/"] --> RESOLVE["resolve_variant<br/>(dtype + kv_cache_dtype)"]
     RESOLVE --> LOAD["_load_perf_db()"]
     LOAD --> CACHE["_perf_db_cache<br/>(in-memory)"]
     LOAD --> META["read meta.yaml<br/>warn if runtime &gt; sweep bounds"]

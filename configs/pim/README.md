@@ -1,7 +1,7 @@
 # configs/pim
 
 PIM (Processing-In-Memory) device configuration files in DRAMSim3 INI format.
-Used by `serving/core/pim_model.py` to derive memory capacity, bandwidth, and
+Used by `llmservingsim/serving/core/pim_model.py` to derive memory capacity, bandwidth, and
 read latency, and to look up the calibrated PIM attention latency model.
 
 Enable PIM by setting `pim_config` in the cluster config's `cpu_mem` section and

@@ -169,9 +169,9 @@ combination that doesn't have profile data:
 
 ```text
 FileNotFoundError: Profile variant folder not found:
-../profiler/perf/RTXPRO6000/meta-llama/Llama-3.1-8B/bf16-kvfp8. Run the
+../configs/perf/RTXPRO6000--meta-llama--Llama-3.1-8B--bf16-kvfp8. Run the
 profiler with matching --dtype / --kv-cache-dtype, or pick an existing
-variant under ../profiler/perf/RTXPRO6000/meta-llama/Llama-3.1-8B
+variant under ../configs/perf
 ```
 
 **Cause:** The `(hardware, model, dtype, kv_cache_dtype)` tuple has no
@@ -207,7 +207,7 @@ The model's family has no catalog yet. See
 **Fix:** either
 
 - pick a hardware / model / precision combo that's already profiled
-  (`ls profiler/perf/`), or
+  (`ls configs/perf/`), or
 - run the **[Profiler](/docs/profiler/overview)** to generate the
   missing bundle yourself.
 
@@ -217,7 +217,7 @@ The model's family has no catalog yet. See
 
 ```text
 max-num-batched-tokens=4096 exceeds profiled 2048 for
-RTXPRO6000/meta-llama/Llama-3.1-8B/bf16; attention/dense lookups will
+RTXPRO6000--meta-llama--Llama-3.1-8B--bf16; attention/dense lookups will
 extrapolate
 ```
 
@@ -225,7 +225,7 @@ There is a matching one for the sequence cap:
 
 ```text
 max-num-seqs=256 exceeds profiled 128 for
-RTXPRO6000/meta-llama/Llama-3.1-8B/bf16; per-sequence lookups will
+RTXPRO6000--meta-llama--Llama-3.1-8B--bf16; per-sequence lookups will
 extrapolate
 ```
 

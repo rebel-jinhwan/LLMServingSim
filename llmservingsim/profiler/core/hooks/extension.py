@@ -32,7 +32,6 @@ from llmservingsim.profiler.core.hooks.moe_hook import (
     force_moe_routing,
     single_moe_layer,
 )
-from llmservingsim.profiler.core.hooks.timings import extract_samples
 
 
 class Extension:
@@ -49,6 +48,7 @@ class Extension:
         slice_: dict[str, dict[str, Any]],
         kind: str,
         iterations: int = 3,
+        platform: str = "cuda",
     ) -> list[dict[str, Any]]:
         """Run one profiling shot and return per-layer timings.
 
@@ -62,18 +62,24 @@ class Extension:
                 ``"moe"``. Used to decide whether to forge MoE routing.
             iterations: Number of timed forward passes (averaged via
                 the hook's invocation count). Default 3.
+            platform: Name of the ``llmservingsim/platforms/<vendor>`` whose
+                ``profile.measure`` times the forwards.
 
         Returns:
             List of ``TimingSample`` as plain dicts (pickled back to host).
         """
+        from llmservingsim.platforms import load_platform
+
         shot = Shot.hydrate(shot_dict)
         iterations = max(1, int(iterations))
+        profile = load_platform(platform).profile
 
         def _fresh_batch():
             # Rebuild the synthetic SchedulerOutput on every forward so
             # prior-iteration KV writes / request state don't bleed into
             # the next measurement.
-            batch, _ = assemble_scheduler_output(shot, self.model_runner)
+            batch, _ = assemble_scheduler_output(
+                shot, self.model_runner, profile.scheduler_output_cls())
             return batch
 
         # -- warm-up run, result discarded -----------------------------
@@ -82,9 +88,13 @@ class Extension:
         # sample_tokens to exercise the sampler path (if execute_model
         # returns None it means the scheduler consumed everything and
         # sample_tokens finalizes the step).
-        warmup_out = self.model_runner.execute_model(_fresh_batch())
+        # Through the worker, not the runner: with pipeline parallelism the
+        # worker's execute_model receives the previous stage's hidden state
+        # and hands its own on, and sample_tokens completes the step on
+        # every rank (the non-last ones return an empty output).
+        warmup_out = self.execute_model(_fresh_batch())
         if warmup_out is None:
-            self.model_runner.sample_tokens(None)
+            self.sample_tokens(None)
 
         # -- optional MoE routing forge --------------------------------
         route: ExpertRoute | None = None
@@ -102,26 +112,15 @@ class Extension:
             )
 
         # -- measured runs (N iterations, averaged) -------------------
-        # Local import so that profiler/__init__.py doesn't require
-        # vllm.profiler to be importable at package-import time.
-        #
-        # vLLM's layerwise_profile hook accumulates ``cuda_time_us``
-        # and ``invocations`` across every forward inside its context.
-        # ``extract_samples`` divides one by the other, so running
-        # execute_model N times here yields the per-call mean — the
-        # cheap statistical fix for DVFS / boost-clock jitter that
-        # single-sample measurements don't mitigate.
-        from vllm.profiler.layerwise_profile import layerwise_profile
+        # How the forwards are timed is the platform's: CUDA wraps them
+        # in vLLM's layerwise_profile and reports per-layer kernel time,
+        # a step-granularity platform wall-clocks the whole forward.
+        # Either way N forwards are averaged, the cheap statistical fix
+        # for DVFS / boost-clock jitter that single samples don't get.
+        def _run_forward():
+            measured_out = self.execute_model(_fresh_batch())
+            if measured_out is None:
+                self.sample_tokens(None)
 
         with force_moe_routing(route):
-            with layerwise_profile() as hook:
-                for _ in range(iterations):
-                    measured_out = self.model_runner.execute_model(_fresh_batch())
-                    if measured_out is None:
-                        self.model_runner.sample_tokens(None)
-
-        stats = hook.results.convert_stats_to_dict()
-        summary = stats["summary_stats"]
-
-        samples = extract_samples(summary, slice_)
-        return [s.as_dict() for s in samples]
+            return profile.measure(_run_forward, iterations, slice_)

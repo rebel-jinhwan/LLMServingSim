@@ -11,10 +11,10 @@ from transformers import AutoConfig
 from transformers.utils import logging
 from transformers.cache_utils import DynamicCache
 
-from profiler.common.timer_stats_store import TimerStatsStore
-from profiler.utils import *
-from profiler.utils.record_function_tracer import RecordFunctionTracer
-from profiler.utils.logger import *
+from llmservingsim.profiler.common.timer_stats_store import TimerStatsStore
+from llmservingsim.profiler.utils import *
+from llmservingsim.profiler.utils.record_function_tracer import RecordFunctionTracer
+from llmservingsim.profiler.utils.logger import *
 
 
 logging.set_verbosity_error()   # error only to avoid warnings from transformers

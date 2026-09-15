@@ -5,11 +5,11 @@ import gc
 
 from flash_attn import flash_attn_varlen_func
 
-from profiler.utils import ProfileMethod
-from profiler.utils.logger import *
-from profiler.utils.record_function_tracer import RecordFunctionTracer
-from profiler.common.timer import Timer
-from profiler.common.timer_stats_store import TimerStatsStore
+from llmservingsim.profiler.utils import ProfileMethod
+from llmservingsim.profiler.utils.logger import *
+from llmservingsim.profiler.utils.record_function_tracer import RecordFunctionTracer
+from llmservingsim.profiler.common.timer import Timer
+from llmservingsim.profiler.common.timer_stats_store import TimerStatsStore
 from .attention_input import AttentionInput
 
 

@@ -39,12 +39,14 @@ Verbosity
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import shutil
 import sys
 from pathlib import Path
 
+from llmservingsim.platforms import load_device, load_platform
 from llmservingsim.profiler.core import logger as log
 from llmservingsim.profiler.core.config import (
     ProfileArgs,
@@ -66,7 +68,10 @@ _PKG_ROOT = Path(__file__).resolve().parent         # .../llmservingsim/profiler
 _REPO_ROOT = _PKG_ROOT.parents[1]                   # .../LLMServingSim
 
 ARCH_DIR = _PKG_ROOT / "models"                     # architecture yamls
-PERF_DIR = _REPO_ROOT / "profiler" / "perf"         # profiled CSV bundles, at the repo root
+# Output root: perf/ under the working directory, so a platform kept out of
+# tree profiles straight into its own perf/ with no flag. In-tree runs pass
+# --out-root configs/perf (profile.sh does).
+PERF_DIR = Path.cwd() / "perf"
 MODEL_CONFIG_DIR = _REPO_ROOT / "configs" / "model" # LLMServingSim's shared configs
 
 
@@ -81,6 +86,22 @@ def _add_common_flags(p: argparse.ArgumentParser) -> None:
         required=True,
         help="Hardware identifier (e.g., H100, A6000). Becomes a "
              "folder name under perf/.",
+    )
+    p.add_argument(
+        "--platform",
+        default=None,
+        help="Platform (cuda, or one installed through the "
+             "llmservingsim.platforms entry-point group). Default: "
+             "$LLMSERVINGSIM_PLATFORM, then the platform whose devices/ "
+             "describes --hardware, then the one whose hardware this host has.",
+    )
+    p.add_argument(
+        "--engine-kwargs",
+        default=None,
+        help="JSON object of extra vllm.LLM kwargs merged last, for knobs "
+             "without a flag of their own, e.g. "
+             "'{\"block_size\": 8192, \"max_model_len\": 65536, "
+             "\"enable_expert_parallel\": true}'.",
     )
     p.add_argument(
         "--tp",
@@ -170,7 +191,7 @@ def _add_common_flags(p: argparse.ArgumentParser) -> None:
         "--out-root",
         type=Path,
         default=PERF_DIR,
-        help=f"Output root (default: {PERF_DIR}).",
+        help="Output root (default: ./perf, i.e. under the working directory).",
     )
 
     # Model config root.
@@ -296,11 +317,14 @@ def _resolve_model(model: str, root: Path) -> tuple[Path, str]:
     return resolved, model
 
 
-def _parse_tp(tp_str: str) -> list[int]:
+def _parse_tp(tp_str: str, require_tp1: bool = True) -> list[int]:
     tps = [int(x.strip()) for x in tp_str.split(",") if x.strip()]
     if not tps:
         raise ValueError("--tp must contain at least one value")
-    if 1 not in tps:
+    if require_tp1 and 1 not in tps:
+        # tp_stable layers are profiled at tp=1 and replicated. A step
+        # profile has no such layers, and a model that needs several
+        # devices cannot be booted at tp=1 at all.
         raise ValueError("--tp must include 1")
     return tps
 
@@ -311,11 +335,25 @@ def _build_profile_args(
     architecture: str,
     model_config: dict,
 ) -> ProfileArgs:
+    platform = load_platform(ns.platform, hardware=ns.hardware, detect=True)
+    # Refuse a KV dtype the device cannot run before an engine is booted for
+    # it: on RBLN-CR03 fp8 KV otherwise fails minutes in, at compile time.
+    kv = ns.kv_cache_dtype or "auto"
+    device = load_device(ns.hardware)
+    if device is not None and not device.supports_kv_cache_dtype(kv):
+        raise ValueError(
+            f"--kv-cache-dtype {kv} is not supported on {ns.hardware}: its device spec "
+            f"says support_fp8_kv: false ({device.source})")
+    if device is not None and ns.dtype == "fp8" and not device.support_fp8:
+        raise ValueError(
+            f"--dtype fp8 is not supported on {ns.hardware}: its device spec says "
+            f"support_fp8: false ({device.source})")
     return ProfileArgs(
         architecture=architecture,
         model=hf_id,
         hardware=ns.hardware,
-        tp_degrees=_parse_tp(ns.tp),
+        platform=platform.name,
+        tp_degrees=_parse_tp(ns.tp, require_tp1=platform.granularity == "layer"),
         variant=ns.variant,
         dtype=ns.dtype,
         kv_cache_dtype=ns.kv_cache_dtype,
@@ -333,6 +371,7 @@ def _build_profile_args(
         only_skew=getattr(ns, "only_skew", False),
         force=getattr(ns, "force", False),
         hf_overrides=None,
+        engine_kwargs=json.loads(ns.engine_kwargs) if ns.engine_kwargs else None,
         model_config=model_config,
     )
 

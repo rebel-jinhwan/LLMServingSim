@@ -29,11 +29,11 @@ combination is already in the bundled profile data. Otherwise:
 ## What it produces
 
 For each `(hardware, model, variant)` profiled, the profiler writes a
-folder under `profiler/perf/<hardware>/<model>/<variant>/` with one
+folder under `configs/perf/<hardware>--<model>--<variant>/` with one
 `tp<N>/` subfolder per profiled tensor-parallel degree:
 
 ```
-perf/<hardware>/<model>/<variant>/
+perf/<hardware>--<model>--<variant>/
 ├── meta.yaml                       # engine flags, sweep specs, skew_fit summary
 └── tp<N>/
     ├── dense.csv                   # token-count → latency
@@ -53,7 +53,7 @@ Schema details on **[Output bundle](./output-bundle)**.
 
 ```mermaid
 flowchart LR
-    PROF["Profiler<br/>(vLLM-based)"] -->|"per-layer<br/>CUDA timings"| CSV["CSV bundle<br/>perf/&lt;hw&gt;/&lt;model&gt;/&lt;variant&gt;/"]
+    PROF["Profiler<br/>(vLLM-based)"] -->|"per-layer<br/>CUDA timings"| CSV["CSV bundle<br/>perf/&lt;hw&gt;--&lt;model&gt;--&lt;variant&gt;/"]
     CSV -->|"_load_perf_db"| TRACE["Simulator's<br/>trace_generator"]
     TRACE --> RUN["Run simulation"]
 ```
@@ -61,7 +61,7 @@ flowchart LR
 The profiler runs on the **vLLM Docker container** (or bare metal via
 `scripts/install-vllm.sh`). The simulator runs on the **simulator
 container** (`astrasim/tutorial-micro2024`). They share the
-`profiler/perf/` directory, that's the only thing they exchange.
+`configs/perf/` directory, that's the only thing they exchange.
 
 ## Bundled profile data
 

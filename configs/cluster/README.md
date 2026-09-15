@@ -61,7 +61,7 @@ Pass a config file to `python -m llmservingsim.serving` via `--cluster-config co
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `model_name` | String | Yes | HuggingFace model identifier (must match `configs/model/`) |
-| `hardware` | String | Yes | Hardware name matching `profiler/perf/{hardware}/` |
+| `hardware` | String | Yes | Hardware name: the `{hardware}` prefix of a bundle in `configs/perf/`, or in a root the top-level `perf_dir` names |
 | `npu_mem` | Object | Yes | NPU memory config (`mem_size` in GB, `mem_bw` in GB/s, `mem_latency` in ns; optional `mem_util`, see below) |
 | `pd_type` | String/null | Yes | `"prefill"`, `"decode"`, or `null` for combined |
 | `num_npus` | Integer | * | Total GPUs for this instance (inferred from `tp_size * pp_size` if omitted) |
@@ -113,7 +113,7 @@ flag — it is not an "unlimited" sentinel.
 instances[i].dtype  >  --dtype  >  model config torch_dtype  >  bfloat16
 ```
 The resolved value picks the profile variant folder, so
-`profiler/perf/{hardware}/{model}/{variant}/tp{N}/` must exist for it.
+`configs/perf/{hardware}--{model}--{variant}/tp{N}/` must exist for it.
 
 > **Calibrate `mem_util` when the KV cache saturates.** It sizes the KV cache,
 > and that only affects results once a run actually fills it — below the

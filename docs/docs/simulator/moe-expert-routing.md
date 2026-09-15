@@ -151,7 +151,7 @@ generates per-block traces.
 ## Per-rank latency lookup
 
 Every rank's MoE block latency comes from
-`profiler/perf/<hw>/<model>/<variant>/tp1/moe.csv` keyed on:
+`configs/perf/<hw>--<model>--<variant>/tp1/moe.csv` keyed on:
 
 | Key | Meaning |
 | --- | --- |
