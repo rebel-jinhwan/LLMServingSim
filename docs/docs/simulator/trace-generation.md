@@ -50,7 +50,7 @@ flowchart LR
 The profiler writes per-category CSVs at:
 
 ```
-profiler/perf/<hardware>/<model>/<variant>/tp<N>/{
+llmservingsim/profiler/perf/<hardware>/<model>/<variant>/tp<N>/{
   dense.csv,
   per_sequence.csv,
   attention.csv,
@@ -129,7 +129,7 @@ So:
 - `--dtype bfloat16 --kv-cache-dtype fp8` → `bf16-kvfp8`
 - `--dtype fp8 --kv-cache-dtype fp8` → `fp8-kvfp8`
 
-If the resolved folder doesn't exist under `profiler/perf/...`, the
+If the resolved folder doesn't exist under `llmservingsim/profiler/perf/...`, the
 simulator raises a clear `FileNotFoundError` pointing at the missing
 variant. Either profile that combo with `--variant <name>` on the
 profiler, or pick a different dtype combination.
@@ -181,7 +181,7 @@ of skew correction is documented on
 ## Walking the architecture YAML
 
 Each model has an architecture YAML at
-`profiler/models/<model_type>.yaml` (e.g., `llama.yaml`,
+`llmservingsim/profiler/models/<model_type>.yaml` (e.g., `llama.yaml`,
 `qwen3_moe.yaml`). The YAML has:
 
 - A `catalog:` mapping canonical layer names (e.g., `qkv_proj`,

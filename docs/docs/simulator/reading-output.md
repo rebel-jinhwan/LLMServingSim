@@ -27,7 +27,7 @@ instance id,request id,model,input,output,arrival,end_time,latency,queuing_delay
 ```
 
 The bundled `outputs/example_*_run.csv` files (one per scenario in
-`serving/run.sh`) are good examples to skim.
+`llmservingsim/serving/run.sh`) are good examples to skim.
 
 ### Column reference
 
@@ -105,7 +105,7 @@ stdout while a run is in progress:
 
 Independently of the level, a run always prints a startup banner, a
 KV-cache sizing block, the periodic heartbeat, and the final results.
-`bench/examples/<hardware>/<model>/outputs/sim.log` holds complete real examples of
+`llmservingsim/bench/examples/<hardware>/<model>/outputs/sim.log` holds complete real examples of
 all of it; every sample on this page is copied from there.
 
 ### Startup banner
@@ -114,7 +114,7 @@ all of it; every sample on this page is copied from there.
 ──────────────────────────── LLMServingSim2.0 ────────────────────────────
                               Input configuration
 
-  • Cluster config             : bench/examples/RTXPRO6000/Llama-3.1-8B/config.json
+  • Cluster config             : llmservingsim/bench/examples/RTXPRO6000/Llama-3.1-8B/config.json
   • Run ID                     : run_1787203264816023_112338
   • ASTRA-Sim inputs root      : /app/LLMServingSim/astra-sim/inputs/runs/run_1787203264816023_112338
   • Dataset                    : workloads/sharegpt-llama-3.1-8b-300-sps10.jsonl
@@ -397,7 +397,7 @@ metric. Numbers and plots are on
 **[Validation](/docs/validation)**; the harness that produces them is
 **[Bench CLI](/docs/reference/bench-cli)**. Complete real logs for
 those runs are committed under
-**[bench/examples/](https://github.com/casys-kaist/LLMServingSim/tree/main/bench/examples)**,
+**[llmservingsim/bench/examples/](https://github.com/casys-kaist/LLMServingSim/tree/main/llmservingsim/bench/examples)**,
 which is the best place to see what a healthy run looks like
 end-to-end.
 

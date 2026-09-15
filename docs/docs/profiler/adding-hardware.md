@@ -6,7 +6,7 @@ title: Adding new hardware
 # Adding new hardware
 
 This page is the workflow for bringing up a brand-new hardware target
-that doesn't have a profile bundle in `profiler/perf/<HARDWARE>/`
+that doesn't have a profile bundle in `llmservingsim/profiler/perf/<HARDWARE>/`
 yet. There are two distinct paths depending on whether vLLM supports
 the hardware:
 
@@ -70,11 +70,11 @@ For unusual GPU types, you may need to adjust:
 ### 3. Run
 
 ```bash
-./profiler/profile.sh
+./llmservingsim/profiler/profile.sh
 ```
 
 Wait. Drink coffee. Output lands in
-`profiler/perf/<HARDWARE>/<MODEL>/<variant>/`. See
+`llmservingsim/profiler/perf/<HARDWARE>/<MODEL>/<variant>/`. See
 **[Running → Expected runtime](./running#expected-runtime)** for
 ballpark times.
 
@@ -128,7 +128,7 @@ If you have an analytical compute simulator (GEMM-perf, roofline,
 or a cycle-accurate model from a published paper), feed it the
 shapes the profiler would have profiled and dump the same CSV format.
 
-The architecture YAMLs at `profiler/models/<model_type>.yaml`
+The architecture YAMLs at `llmservingsim/profiler/models/<model_type>.yaml`
 declare which kernels you need to time. For each entry in the
 `catalog:` section you need:
 
@@ -254,7 +254,7 @@ Once you've synthesized a CSV bundle:
 ## Where this gets used
 
 Once your CSV bundle lives at
-`profiler/perf/<HARDWARE>/<MODEL>/<variant>/`, the simulator picks
+`llmservingsim/profiler/perf/<HARDWARE>/<MODEL>/<variant>/`, the simulator picks
 it up automatically when the cluster config names matching values:
 
 ```json
@@ -275,4 +275,4 @@ The `--dtype` and `--kv-cache-dtype` CLI flags resolve to the right
   you need to produce (or have the profiler produce).
 - **[Adding a model architecture](./adding-model-architecture)** -
   separate concern, only when the model's `model_type` isn't
-  already in `profiler/models/`.
+  already in `llmservingsim/profiler/models/`.

@@ -17,7 +17,7 @@ experts to ranks. This page is about both.
 
 ## The piece that does it: `GateRouter`
 
-`serving/core/gate_function.py` defines `GateRouter`. The trace
+`llmservingsim/serving/core/gate_function.py` defines `GateRouter`. The trace
 generator instantiates one per simulation; on every MoE block it
 calls:
 
@@ -151,7 +151,7 @@ generates per-block traces.
 ## Per-rank latency lookup
 
 Every rank's MoE block latency comes from
-`profiler/perf/<hw>/<model>/<variant>/tp1/moe.csv` keyed on:
+`llmservingsim/profiler/perf/<hw>/<model>/<variant>/tp1/moe.csv` keyed on:
 
 | Key | Meaning |
 | --- | --- |

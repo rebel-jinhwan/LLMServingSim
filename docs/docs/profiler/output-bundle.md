@@ -6,7 +6,7 @@ title: Output bundle
 # Output bundle
 
 Each profile run produces a directory tree under
-`profiler/perf/<HARDWARE>/<MODEL>/<variant>/`. This is **the contract
+`llmservingsim/profiler/perf/<HARDWARE>/<MODEL>/<variant>/`. This is **the contract
 between the profiler and the simulator**: anything that lands here
 in the right format is consumable by
 `trace_generator._load_perf_db()`, regardless of how it was produced.
@@ -14,7 +14,7 @@ in the right format is consumable by
 ## Folder layout
 
 ```
-profiler/perf/<HARDWARE>/<MODEL>/<variant>/
+llmservingsim/profiler/perf/<HARDWARE>/<MODEL>/<variant>/
 ├── meta.yaml
 └── tp<N>/                        # one folder per profiled TP degree
     ├── dense.csv
@@ -206,7 +206,7 @@ value, and `kv_big` extends its log-4x bins to the observed maximum.
 ## `meta.yaml`
 
 Sibling of the `tp<N>/` folders. Below is a real one, from
-`profiler/perf/RTXPRO6000/Qwen/Qwen3-32B/bf16/`, with the per-TP fit
+`llmservingsim/profiler/perf/RTXPRO6000/Qwen/Qwen3-32B/bf16/`, with the per-TP fit
 block trimmed to one entry:
 
 ```yaml
@@ -289,7 +289,7 @@ skew_fit:
 | `profiler_version` / `vllm_version` / `cuda_version` | Versions the bundle was produced with. Kernel timings shift a few percent across CUDA driver versions, so this is the field to check before trusting a mixed comparison |
 | `gpu` | The **driver's** device name, verbatim |
 | `hardware` | The `--hardware` label, i.e. the folder name and the value a cluster config's `hardware` field must match. Distinct from `gpu` |
-| `architecture` / `architecture_sha256` | Which `profiler/models/*.yaml` was used, and its hash — so you can tell whether a catalog edit invalidates the bundle |
+| `architecture` / `architecture_sha256` | Which `llmservingsim/profiler/models/*.yaml` was used, and its hash — so you can tell whether a catalog edit invalidates the bundle |
 | `model` / `variant` / `tp_degrees` | What was profiled |
 | `measurement_iterations` | Timed forwards averaged per shot |
 

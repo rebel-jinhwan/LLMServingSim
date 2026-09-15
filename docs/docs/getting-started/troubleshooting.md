@@ -169,9 +169,9 @@ combination that doesn't have profile data:
 
 ```text
 FileNotFoundError: Profile variant folder not found:
-../profiler/perf/RTXPRO6000/meta-llama/Llama-3.1-8B/bf16-kvfp8. Run the
+../llmservingsim/profiler/perf/RTXPRO6000/meta-llama/Llama-3.1-8B/bf16-kvfp8. Run the
 profiler with matching --dtype / --kv-cache-dtype, or pick an existing
-variant under ../profiler/perf/RTXPRO6000/meta-llama/Llama-3.1-8B
+variant under ../llmservingsim/profiler/perf/RTXPRO6000/meta-llama/Llama-3.1-8B
 ```
 
 **Cause:** The `(hardware, model, dtype, kv_cache_dtype)` tuple has no
@@ -197,7 +197,7 @@ that was interrupted.
 
 ```text
 FileNotFoundError: Architecture yaml not found for model_type='gemma2'
-at profiler/models/gemma2.yaml. Add profiler/models/gemma2.yaml
+at llmservingsim/profiler/models/gemma2.yaml. Add llmservingsim/profiler/models/gemma2.yaml
 describing the architecture.
 ```
 
@@ -207,7 +207,7 @@ The model's family has no catalog yet. See
 **Fix:** either
 
 - pick a hardware / model / precision combo that's already profiled
-  (`ls profiler/perf/`), or
+  (`ls llmservingsim/profiler/perf/`), or
 - run the **[Profiler](/docs/profiler/overview)** to generate the
   missing bundle yourself.
 
@@ -243,7 +243,7 @@ no warning at all.
 
 - For best accuracy, re-profile at the higher
   `--max-num-batched-tokens` (`MAX_NUM_BATCHED_TOKENS=4096
-  ./profiler/profile.sh`).
+  ./llmservingsim/profiler/profile.sh`).
 - Or stay at the profiled bound. Extrapolation is usually fine for
   small overshoots; large ones can drift.
 
@@ -269,7 +269,7 @@ especially with MoE + EP or large prefix caches.
 **Symptom:** Profiler crashes with CUDA OOM partway through the
 attention sweep.
 
-**Fix:** lower `MAX_NUM_BATCHED_TOKENS` in `profiler/profile.sh`,
+**Fix:** lower `MAX_NUM_BATCHED_TOKENS` in `llmservingsim/profiler/profile.sh`,
 or skip the heavy categories with environment variables (see
 [Profiler → Running](/docs/profiler/running)).
 

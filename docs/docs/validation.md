@@ -10,7 +10,7 @@ LLMServingSim is validated end-to-end against real vLLM on the
 **bundled `(hardware, model)` combos**. The numbers below come from
 running a 300-request ShareGPT replay through both vLLM v0.19.0 and
 the simulator on RTXPRO6000, then comparing the per-request and
-per-tick metrics with `python -m bench validate`.
+per-tick metrics with `python -m llmservingsim.bench validate`.
 
 > **Want to validate your own change?** See
 > **[For Contributors → Validating your changes](/docs/contributor/validating-changes)**
@@ -21,11 +21,11 @@ per-tick metrics with `python -m bench validate`.
 | Knob | Value |
 | --- | --- |
 | **Workload** | 300 ShareGPT-derived requests, ~10 sps Poisson arrivals |
-| **Hardware** | RTXPRO6000 and RTX 4090, single node (profile bundles in `profiler/perf/<hardware>/`) |
+| **Hardware** | RTXPRO6000 and RTX 4090, single node (profile bundles in `llmservingsim/profiler/perf/<hardware>/`) |
 | **vLLM version** | `v0.19.0` (the pin used by the bench container) |
 | **Block size** | 16 |
 | **Engine flags** | Defaults except where the cluster config dictates otherwise |
-| **Cluster configs** | `bench/examples/<hardware>/<model>/config.json` |
+| **Cluster configs** | `llmservingsim/bench/examples/<hardware>/<model>/config.json` |
 | **KV capacity** | `mem_util` `0.9`, except the RTX 4090 example which is calibrated to the measured block count (see below) |
 
 Inputs and outputs (vLLM token IDs, sampling params, per-request
@@ -73,7 +73,7 @@ configurations:
 | RTXPRO6000 | Qwen3-30B-A3B-Instruct-2507 | DP=2 x EP=2 MoE | -13.6% | -1.7% | -2.2% |
 
 Every number on this page is read out of the committed
-`bench/examples/<hardware>/<model>/validation/summary.txt` files, so it is
+`llmservingsim/bench/examples/<hardware>/<model>/validation/summary.txt` files, so it is
 reproducible rather than quoted.
 
 **TPOT means land within 1.7% and end-to-end latency means within 2.2%
@@ -100,7 +100,7 @@ configuration, and within 1.0% on the RTX 4090 run.
 
 Per-percentile numbers (median / P90 / P95 / P99) are in the same
 `summary.txt` files under
-[`bench/examples/`](https://github.com/casys-kaist/LLMServingSim/tree/main/bench/examples).
+[`llmservingsim/bench/examples/`](https://github.com/casys-kaist/LLMServingSim/tree/main/llmservingsim/bench/examples).
 
 ## Per-configuration results
 
@@ -194,13 +194,13 @@ simulator side and re-run the comparison against the committed vLLM
 artifacts:
 
 ```bash
-# Sim side: writes bench/examples/<hardware>/<model>/outputs/sim.csv
-./bench/examples/run.sh                       # all four
-./bench/examples/run.sh RTX4090/Llama-3.1-8B  # or one at a time
+# Sim side: writes llmservingsim/bench/examples/<hardware>/<model>/outputs/sim.csv
+./llmservingsim/bench/examples/run.sh                       # all four
+./llmservingsim/bench/examples/run.sh RTX4090/Llama-3.1-8B  # or one at a time
 
-# Compare: writes bench/examples/<hardware>/<model>/validation/{summary.txt, *.png}
-./bench/examples/validate.sh
-./bench/examples/validate.sh RTX4090/Llama-3.1-8B
+# Compare: writes llmservingsim/bench/examples/<hardware>/<model>/validation/{summary.txt, *.png}
+./llmservingsim/bench/examples/validate.sh
+./llmservingsim/bench/examples/validate.sh RTX4090/Llama-3.1-8B
 ```
 
 Both scripts take `<hardware>/<model>` and discover the examples from
@@ -210,15 +210,15 @@ committed artifacts without editing a script.
 The validation step regenerates the throughput / latency / requests
 plots and the headline summary. To rerun vLLM itself (instead of
 reusing the committed artifacts under
-`bench/examples/<hardware>/<model>/vllm/`), use `python -m bench run` from
+`llmservingsim/bench/examples/<hardware>/<model>/vllm/`), use `python -m llmservingsim.bench run` from
 inside the vLLM container; see
-[`bench/README.md`](https://github.com/casys-kaist/LLMServingSim/blob/main/bench/README.md)
+[`llmservingsim/bench/README.md`](https://github.com/casys-kaist/LLMServingSim/blob/main/llmservingsim/bench/README.md)
 for the full layout.
 
 ## What's next
 
 - **[For Contributors → Validating your changes](/docs/contributor/validating-changes)**:
-  `./serving/validate.sh` — the check you run before opening a PR, and
+  `./llmservingsim/serving/validate.sh` — the check you run before opening a PR, and
   how to report a number that moved.
 - **[Simulator → Reading the output](/docs/simulator/reading-output)**:
   what every column in the per-request CSV means and how to derive

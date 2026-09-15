@@ -29,7 +29,7 @@ combination is already in the bundled profile data. Otherwise:
 ## What it produces
 
 For each `(hardware, model, variant)` profiled, the profiler writes a
-folder under `profiler/perf/<hardware>/<model>/<variant>/` with one
+folder under `llmservingsim/profiler/perf/<hardware>/<model>/<variant>/` with one
 `tp<N>/` subfolder per profiled tensor-parallel degree:
 
 ```
@@ -61,7 +61,7 @@ flowchart LR
 The profiler runs on the **vLLM Docker container** (or bare metal via
 `scripts/install-vllm.sh`). The simulator runs on the **simulator
 container** (`astrasim/tutorial-micro2024`). They share the
-`profiler/perf/` directory, that's the only thing they exchange.
+`llmservingsim/profiler/perf/` directory, that's the only thing they exchange.
 
 ## Bundled profile data
 
