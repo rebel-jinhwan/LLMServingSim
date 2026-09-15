@@ -104,6 +104,37 @@ number is chosen so the pool holds vLLM's 227 blocks. The pp4 MiniMax
 run is kept as ground truth only (`MiniMax-M2.5-pp4/NOTE.md`): the
 profiler's per-rank timing does not measure a pipeline's latency yet.
 
+### Prefill/decode disaggregation over NIXL
+
+The third case splits Llama-3.2-1B-Instruct across two RBLN-CR03, prefill
+on one and decode on the other, with vllm-rbln's `RblnNixlConnector`
+behind vLLM's disaggregation proxy. The real run used the host-bounce
+path over upstream NIXL and UCX. Both servers' Prometheus metrics split
+its latency into parts, and each part maps to one knob:
+
+| Part of the real run | Measured | Knob it sets |
+| --- | --- | --- |
+| Decode inter-token latency | 3.41 ms, against a profiled step of about 2.7 ms | `step_overhead_us` 700 on the decode instance |
+| Prefill server, arrival to done | 20.92 ms per request, against 15.66 ms profiled over 2 chunks | `prefill_step_overhead_us` 2630 on the prefill instance |
+| NIXL transfer | 44.7 MB per request in 2.42 ms | `link_bw` 18.5 GB/s |
+| Decode's wait for remote KV, and the proxy hop | the remainder of TTFT | `link_latency` 5.3 ms |
+
+NIXL moves whole KV blocks once a request's prefill is done, so the
+simulator sends each request's KV on its final prefill step, rounded up
+to blocks. `link_latency` counts about three times toward TTFT, since the
+link also carries the output hand-off, so fit it against TTFT rather
+than setting the measured wait directly.
+
+| Llama-3.2-1B-Instruct PD, 48 requests | TTFT mean | TPOT mean | Latency mean |
+| --- | --- | --- | --- |
+| raw bundle | -50.8% | -19.7% | -22.9% |
+| decode overhead only | -48.2% | +0.9% | -4.3% |
+| all four knobs | -0.6% | +0.9% | +0.8% |
+
+The example lives under `bench/examples/RBLN-CR03/Llama-3.2-1B-Instruct-pd`.
+Its `vllm/` directory carries both servers' metrics next to the
+per-request results.
+
 ## Running vLLM's scheduler instead of the port
 
 `serving/core/scheduler.py` is a port of vLLM's V1 scheduler. The

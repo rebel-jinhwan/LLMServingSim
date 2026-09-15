@@ -240,10 +240,13 @@ class VllmScheduler(Scheduler):
             req = self._sim[request_id]
             computed_after = vreq.num_computed_tokens
             computed_before = computed_after - num_new
-            if self.pd_type == "prefill":
-                # This step's KV, plus a prefix-cache hit on the first step: the
-                # decode side needs that KV too.
-                pd_kv_send_tokens += num_new + (computed_before if req.queuing_delay < 0 else 0)
+            if self.pd_type == "prefill" and computed_after >= vreq.num_prompt_tokens:
+                # NIXL moves a request's KV once its prefill is done, and moves
+                # whole blocks: the decode side pulls every block the prompt
+                # occupies (measured on RBLN-CR03, 44.7 MB per request for
+                # Llama-3.2-1B, about 1.3 blocks of 1024 tokens).
+                block = self.memory.block_size
+                pd_kv_send_tokens += -(-vreq.num_prompt_tokens // block) * block
             if req.queuing_delay < 0:
                 # First time scheduled. What vLLM already counts as computed
                 # on a brand-new request is its prefix-cache hit.

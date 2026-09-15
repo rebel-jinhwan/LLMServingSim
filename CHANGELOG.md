@@ -6,6 +6,13 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
 ## [Unreleased]
 
 ### Added
+- `bench/examples/RBLN-CR03/Llama-3.2-1B-Instruct-pd` — the first prefill/decode
+  disaggregation example against real servers: Llama-3.2-1B-Instruct split over two
+  RBLN-CR03 with vllm-rbln's NIXL connector (host-bounce, upstream NIXL 1.3.1 over UCX)
+  behind vLLM's disaggregation proxy. Each calibration knob is fitted from one part of
+  the servers' Prometheus metrics; TTFT / TPOT / latency mean land at -0.6% / +0.9% /
+  +0.8%, from -50.8% / -19.7% / -22.9% uncalibrated. The vLLM-driven scheduler now sends a
+  request's KV once, on its final prefill step, rounded up to whole blocks, as NIXL does.
 - Prefill/decode disaggregation with the vLLM-driven scheduler and step-granularity
   bundles, following vLLM's NIXL flow. A prefill instance runs requests with
   `max_tokens=1` as the disaggregation proxy does; a decode instance carries vLLM's

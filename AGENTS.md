@@ -233,6 +233,36 @@ truth only: per-rank wall-clocks inside `collective_rpc` do not measure a
 pipeline's latency (prefill came out 4x long, decode 4x short), so a pp step
 profile needs one forward timed from the host.
 
+**P/D over NIXL on RBLN, what the bring-up taught.** The example is
+`bench/examples/RBLN-CR03/Llama-3.2-1B-Instruct-pd`: TTFT / TPOT / latency mean
+-0.6% / +0.9% / +0.8% after calibration, from -50.8% / -19.7% / -22.9% raw. Fit
+each knob from the servers' own Prometheus metrics, not a blind grid: decode
+`step_overhead_us` from `inter_token_latency_seconds`, prefill
+`prefill_step_overhead_us` from the prefill server's `e2e_request_latency_seconds`
+against the bundle's prefill time, `link_bw` from `nixl_xfer_time_seconds` and
+`nixl_bytes_transferred`, and `link_latency` last, against TTFT, because it counts
+about three times (the link carries the output hand-off too). NIXL moves whole
+blocks once a request's prefill is done, so the vLLM-driven scheduler sends each
+request's KV on its final prefill step, rounded up to blocks. The client's first
+token comes from decode, so TTFT spans both servers plus the proxy.
+
+Facts that each cost a failed boot:
+- Device-to-device transfer (`kv_buffer_device: rbln`) needs `nixl-rbln`. The newest
+  build on pypi.rebellions.in (0.1.0.dev145) predates the `slices` field this
+  vllm-rbln reads, and calls `rebel._C.Context.global_key_at_device`, which
+  rebel-compiler 0.11.3.dev237 lacks. The field is on `rebellions-sw/nixl-rbln`'s
+  `dev` branch, which builds with meson against rebel-compiler and pins
+  `nixl<1.2`. Without `nixl-rbln` the connector falls back to upstream NIXL over UCX
+  on the host-bounce path, which is what the example ran.
+- NIXL 1.4.1's CUDA 13 build, which the `nixl` meta package picks on a host with no
+  CUDA, segfaults at exit here; 1.3.1, vLLM's own pin, does not.
+- Host-bounce allocates a host buffer the size of the KV cache and UCX pins it for
+  RDMA. A whole card's worth failed in `ibv_reg_mr` ("Cannot allocate memory");
+  size the cache to the workload with `num_gpu_blocks_override`.
+- The proxy is vLLM's `tests/v1/kv_connector/nixl_integration/toy_proxy_server.py`.
+  `python -m bench run` drives one engine, so a PD run needs a client that replays
+  the workload through the proxy and writes `requests.jsonl` in bench's shape.
+
 **RBLN facts that cost a boot each to learn.** vllm-rbln validates
 `block_size` against its `prefix_block_size` (2048), so the KV block must be
 a multiple of that (the CI perf target runs 8192; the profiler's default 16
