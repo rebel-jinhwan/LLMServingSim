@@ -6,7 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PYTHON="${PYTHON:-python3}"
 
-BLOCK_SIZE="${BLOCK_SIZE:-16}"
+# Empty means "take it from the run's own meta.json"; set it to override.
+BLOCK_SIZE="${BLOCK_SIZE:-}"
 LOG_LEVEL="${LOG_LEVEL:-WARNING}"
 NETWORK_BACKEND="${NETWORK_BACKEND:-analytical}"
 TERM="${TERM:-xterm-256color}"
@@ -56,6 +57,27 @@ else:
 PY
 }
 
+# Like json_get, but a missing key is not an error: the block size lives in
+# different places across meta.json vintages, and the oldest have neither.
+json_get_opt() {
+    "$PYTHON" - "$1" "$2" <<'PY' 2>/dev/null || true
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as f:
+    obj = json.load(f)
+
+for part in sys.argv[2].split("."):
+    try:
+        obj = obj[part]
+    except (KeyError, TypeError):
+        sys.exit(0)
+
+if obj is not None:
+    print(obj)
+PY
+}
+
 resolve_repo_path() {
     local path="$1"
     if [[ "$path" = /* ]]; then
@@ -94,6 +116,7 @@ run_example() {
     local kv_cache_dtype
     local max_num_seqs
     local max_num_batched_tokens
+    local block_size
 
     dataset_rel="$(json_get "$meta" "dataset_path")"
     dataset_cli="$(repo_relative_path "$dataset_rel")"
@@ -103,6 +126,15 @@ run_example() {
     kv_cache_dtype="$(json_get "$meta" "engine_kwargs.kv_cache_dtype")"
     max_num_seqs="$(json_get "$meta" "engine_kwargs.max_num_seqs")"
     max_num_batched_tokens="$(json_get "$meta" "engine_kwargs.max_num_batched_tokens")"
+    # The block size the engine actually ran with. vLLM resolves it per
+    # platform -- 8192 on an RBLN-CR03, 16 on a GPU -- and a block is the
+    # scheduler's allocation unit, so simulating at the wrong one changes how
+    # much KV a batch holds, not just the bookkeeping. `kv_cache` carries the
+    # resolved value, `engine_kwargs` only what was asked for.
+    block_size="$BLOCK_SIZE"
+    [[ -n "$block_size" ]] || block_size="$(json_get_opt "$meta" "kv_cache.block_size")"
+    [[ -n "$block_size" ]] || block_size="$(json_get_opt "$meta" "engine_kwargs.block_size")"
+    [[ -n "$block_size" ]] || block_size=16
     config_rel="$(repo_relative_path "$config")"
     output_dir_rel="$(repo_relative_path "$output_dir")"
 
@@ -117,7 +149,7 @@ run_example() {
         --num-reqs "$num_reqs"
         --dtype "$dtype"
         --kv-cache-dtype "$kv_cache_dtype"
-        --block-size "$BLOCK_SIZE"
+        --block-size "$block_size"
         --max-num-seqs "$max_num_seqs"
         --max-num-batched-tokens "$max_num_batched_tokens"
         --log-level "$LOG_LEVEL"
@@ -132,6 +164,7 @@ run_example() {
     echo "Example: $model_dir"
     echo "Dataset: $dataset_cli"
     echo "Config:  $config_rel"
+    echo "Blocks:  $block_size tokens"
     echo "Output:  $output_dir_rel"
     echo "Running: ${cmd[*]}"
 

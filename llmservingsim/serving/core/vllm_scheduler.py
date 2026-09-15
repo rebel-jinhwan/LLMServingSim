@@ -144,6 +144,18 @@ class VllmScheduler(Scheduler):
         # EngineCore.__init__, minus the executor.
         scheduler_cls = cfg.scheduler_config.get_scheduler_cls()
         VllmScheduler._last_scheduler_cls = scheduler_cls
+        # A vLLM platform plugin's check_and_update_config runs inside
+        # create_engine_config() and may assign scheduler_config.scheduler_cls
+        # itself, which silently outranks the one a platform pinned here. The
+        # simulation then schedules with a class the deployment does not run,
+        # and nothing in the results says so.
+        pinned = self.ENGINE_ARGS.get("scheduler_cls")
+        resolved = f"{scheduler_cls.__module__}.{scheduler_cls.__qualname__}"
+        if isinstance(pinned, str) and pinned != resolved:
+            self.logger.warning(
+                "scheduler_cls %s was overridden by the vLLM platform plugin, which "
+                "installed %s instead; the plugin's environment is not the one this "
+                "platform expects", pinned, resolved)
         self._block_hasher = None
         if cfg.cache_config.enable_prefix_caching:
             from vllm.utils.hashing import get_hash_fn_by_name
