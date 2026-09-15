@@ -37,7 +37,8 @@ LLMServingSim/
 │   ├── validate.sh             # every scenario vs recorded clocks + bench/examples digests
 │   └── validate-baselines.txt  # the recorded values; refresh with validate.sh --update
 ├── platforms/                  # Platform plugins: how a vLLM hardware platform differs from CUDA
-│   ├── spec.py                 # PlatformSpec: name, granularity, profile_cls, scheduler_cls, resources
+│   ├── spec.py                 # PlatformSpec (name, granularity, profile_cls, bind_scheduler)
+│   │                           # and DeviceSpec (npu_mem defaults, kv_cache_dtypes)
 │   ├── _registry.py            # built-ins by package scan + `llmservingsim.platforms` entry points
 │   ├── __init__.py             # load_platform(), load_device(), resolve_npu_mem(), resource_dirs()
 │   ├── profile.py              # PlatformProfile: the profiler-side interface, CUDA defaults
@@ -130,11 +131,15 @@ the simulator's counterpart, built the same way: one `PlatformSpec` subclass
 per platform, in tree or out, and one registry holding both.
 
 - `platforms/spec.py::PlatformSpec` is the whole interface: `name`,
-  `granularity`, `is_available()`, `profile_cls`, `scheduler_cls`,
+  `granularity`, `is_available()`, `profile_cls`, `bind_scheduler()`,
   `resource_dir` / `resources(kind)`. Defaults are CUDA vLLM's, so a
-  platform overrides only what differs. `spec.profile` builds `profile_cls`
-  once and refuses one that is not a `PlatformProfile`, or a
-  step-granularity platform whose profile does not override `step_grid`.
+  platform overrides only what differs. Each hook has a resolved counterpart
+  the callers read: `spec.profile` builds `profile_cls` once and refuses one
+  that is not a `PlatformProfile`, or a step-granularity platform whose
+  profile does not override `step_grid`; reading `spec.scheduler` runs
+  `bind_scheduler()` once, which assigns `self.scheduler` or nothing, and
+  binds the in-tree port when nothing was assigned, which is what CUDA vLLM
+  does. The setter refuses anything that is not a class.
   Two rules keep a spec constructible on a host without the hardware, which
   is what lets the simulator model a platform it cannot run on: importing
   the module and constructing the spec touch neither the hardware nor its

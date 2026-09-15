@@ -9,6 +9,12 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
 ## [Unreleased]
 
 ### Changed
+- `PlatformSpec.scheduler_cls` is now the `bind_scheduler()` hook, which
+  assigns `self.scheduler` and returns nothing; `spec.scheduler` is what
+  callers read, and reading it binds once. A platform that assigns nothing
+  gets the in-tree port of vLLM's scheduler, which is what CUDA vLLM does;
+  assigning something that is not a class is refused on the spot. A method rather than an attribute because binding may
+  import the vendor's package, which must not happen until a run asks for it.
 - The `rbln` platform now lives out of tree, in
   [`llmservingsim-rbln`](https://github.com/rebel-jinhwan/llmservingsim-rbln),
   which is the worked example of the platform plugin interface: it ships the
@@ -33,7 +39,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
   platforms both claim.
 - Out-of-tree platforms. A platform is now a
   `platforms/spec.py::PlatformSpec` subclass carrying `name`,
-  `granularity`, `is_available()`, `profile_cls`, `scheduler_cls` and the
+  `granularity`, `is_available()`, `profile_cls`, a scheduler hook and the
   directories it ships; one registry holds the built-ins (found by scanning the
   subpackages of `platforms/`, no registration list) and every class named by an
   `llmservingsim.platforms` entry point. Built-ins register first and the first
