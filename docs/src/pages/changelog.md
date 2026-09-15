@@ -44,10 +44,11 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
   subpackages of `platforms/`, no registration list) and every class named by an
   `llmservingsim.platforms` entry point. Built-ins register first and the first
   name wins, so a plugin cannot replace one; a plugin that fails to import or
-  validate is logged and skipped. A plugin's `devices/`, `perf/` and `models/`
+  validate is logged and skipped. A plugin's `devices/`, `perf/` and `configs/`
   directories are searched after the in-tree ones, so an out-of-tree platform
-  ships its own device specs, perf bundles, architecture catalogs and cluster
-  configs without a change to LLMServingSim. `--cluster-config` now resolves by
+  ships its own device specs, perf bundles and cluster configs without a change
+  to LLMServingSim. Architecture catalogs stay in `profiler/models/`: they
+  describe a model, not the hardware it runs on. `--cluster-config` now resolves by
   name as well as by path, so a deployment a platform was calibrated for runs
   without knowing which package holds its config. `$LLMSERVINGSIM_PLATFORM` and the instance's
   `hardware` now take part in resolution, and the profiler and bench detect the
