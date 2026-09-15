@@ -105,12 +105,3 @@ def get_config(model_name):
         )
 
     return config
-
-
-if __name__ == "__main__":
-    model_name = "meta-llama/Llama-3.1-8B"
-    config = get_config(model_name)
-
-    if config:
-        print(f"Loaded config for {model_name}: {list(config.keys())[:5]}")
-        print(config['model_type'])

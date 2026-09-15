@@ -14,7 +14,7 @@ dependencies = [
     "rich",
     "pandas",
     "numpy",
-    "matplotlib",       # bench/core/plots.py, reached by `python -m llmservingsim.bench validate`
+    "matplotlib",       # bench/core/plots.py, reached by `python -m bench validate`
     "huggingface_hub",  # config auto-fetch on a profiler cache miss
 ]
 
@@ -27,9 +27,19 @@ Source = "https://github.com/casys-kaist/LLMServingSim"
 # environment (scripts/install-vllm.sh, or the container image).
 dev = ["pytest"]
 
+# Installed for the import paths, not to be published: the package names here
+# are the repository's own top-level directories, which are too generic to put
+# on an index. `pip install -e .` is what makes `import serving` / `platforms`
+# work from anywhere, so an out-of-tree platform plugin and `python tests/run.py`
+# need no PYTHONPATH. Moving these under an `llmservingsim` namespace is the
+# packaging work, not this.
 [tool.setuptools.packages.find]
-include = ["llmservingsim*"]
-exclude = ["llmservingsim.profiler.v0*"]
+include = ["bench*", "platforms*", "profiler*", "serving*", "workloads*"]
+exclude = ["profiler.v0*"]
 
 [tool.setuptools.package-data]
-"llmservingsim.profiler" = ["models/*.yaml"]
+platforms = ["*/devices/*.yaml"]
+profiler = ["models/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
