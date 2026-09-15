@@ -11,11 +11,13 @@ LOG_LEVEL="${LOG_LEVEL:-INFO}"
 PREFIX="${PREFIX:-}"
 TITLE_PREFIX="${TITLE_PREFIX:-vLLM vs LLMServingSim}"
 
-# Examples are keyed by <hardware>/<model>, and each carries its own
-# config.json, so nothing has to be kept in sync with a parallel configs/
-# tree. They live under this folder by default; an out-of-tree platform
-# ships its own, so point EXAMPLES_DIR at its examples/ folder and paths
-# outside this repo are passed through absolute.
+# An example is any directory holding a config.json, named on the command
+# line by its path under EXAMPLES_DIR -- <hardware>/<model> in tree, one
+# flat <hardware>--<model>--<variant> folder in some out-of-tree platforms.
+# Each carries its own config.json, so nothing has to be kept in sync with a
+# parallel configs/ tree. They live under this folder by default; an
+# out-of-tree platform ships its own, so point EXAMPLES_DIR at its examples/
+# folder and paths outside this repo are passed through absolute.
 EXAMPLES_DIR="${EXAMPLES_DIR:-$SCRIPT_DIR}"
 
 DEFAULT_EXAMPLES=(
@@ -82,8 +84,10 @@ if [[ $# -eq 0 ]]; then
     if [[ "$EXAMPLES_DIR" == "$SCRIPT_DIR" ]]; then
         set -- "${DEFAULT_EXAMPLES[@]}"
     else
-        # An out-of-tree examples folder has no curated list: run them all.
-        mapfile -t found < <(cd "$EXAMPLES_DIR" && ls -d */*/ 2>/dev/null | sed 's|/$||' | sort)
+        # An out-of-tree examples folder has no curated list: run every
+        # directory holding a config.json, at either depth.
+        mapfile -t found < <(cd "$EXAMPLES_DIR" && find . -mindepth 2 -maxdepth 3 \
+            -name config.json -printf '%h\n' 2>/dev/null | sed 's|^\./||' | sort)
         [[ ${#found[@]} -gt 0 ]] || { echo "No examples under $EXAMPLES_DIR" >&2; exit 2; }
         set -- "${found[@]}"
     fi
