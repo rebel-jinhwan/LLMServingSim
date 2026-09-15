@@ -14,20 +14,20 @@ import shutil
 from time import time
 from collections import defaultdict, deque
 
-from serving.core.scheduler import *
-from serving.core.request import *
-from serving.core.utils import *
-from serving.core.controller import *
-from serving.core.memory_model import *
-from serving.core.graph_generator import *
-from serving.core.trace_generator import *
-from serving.core.pim_model import *
-from serving.core.config_builder import *
-from platforms import load_device, load_platform
-from serving.core.router import *
-from serving.core.power_model import *
-from serving.core.logger import *
-from serving.core.run_paths import build_run_paths, resolve_run_id
+from llmservingsim.serving.core.scheduler import *
+from llmservingsim.serving.core.request import *
+from llmservingsim.serving.core.utils import *
+from llmservingsim.serving.core.controller import *
+from llmservingsim.serving.core.memory_model import *
+from llmservingsim.serving.core.graph_generator import *
+from llmservingsim.serving.core.trace_generator import *
+from llmservingsim.serving.core.pim_model import *
+from llmservingsim.serving.core.config_builder import *
+from llmservingsim.platforms import load_device, load_platform
+from llmservingsim.serving.core.router import *
+from llmservingsim.serving.core.power_model import *
+from llmservingsim.serving.core.logger import *
+from llmservingsim.serving.core.run_paths import build_run_paths, resolve_run_id
 import sys as flush
 
 from pyinstrument import Profiler
@@ -568,10 +568,10 @@ def main():
             inst_cfg["dtype"], inst_cfg["kv_cache_dtype"]), hardware=instance["hardware"])
         scheduler_cls = platform.scheduler
         if args.scheduler == 'vllm':
-            from serving.core.vllm_scheduler import VllmScheduler
+            from llmservingsim.serving.core.vllm_scheduler import VllmScheduler
             scheduler_cls = VllmScheduler
         if args.engine_kwargs:
-            from serving.core.vllm_scheduler import VllmScheduler
+            from llmservingsim.serving.core.vllm_scheduler import VllmScheduler
             if not issubclass(scheduler_cls, VllmScheduler):
                 raise ValueError("--engine-kwargs only applies to the vLLM-driven scheduler")
             scheduler_cls = type(scheduler_cls.__name__, (scheduler_cls,), {

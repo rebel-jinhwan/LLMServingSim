@@ -8,7 +8,8 @@ built the same way:
   without the hardware; every capability is read off it.
 - ``platforms.profile.PlatformProfile``: the profiler-side interface a spec's
   ``profile_cls`` implements.
-- ``platforms._registry``: built-ins (subpackages of ``platforms/``) and
+- ``llmservingsim.platforms._registry``: built-ins (subpackages of
+  ``llmservingsim/platforms/``) and
   out-of-tree specs (the ``llmservingsim.platforms`` entry-point group) in
   one registry.
 
@@ -44,8 +45,8 @@ import os
 from pathlib import Path
 from typing import Any, Mapping
 
-from platforms._registry import ENTRY_POINT_GROUP, ENV_VAR, registry, validate_spec
-from platforms.spec import GRANULARITIES, NPU_MEM_KEYS, DeviceSpec, PlatformSpec
+from llmservingsim.platforms._registry import ENTRY_POINT_GROUP, ENV_VAR, registry, validate_spec
+from llmservingsim.platforms.spec import GRANULARITIES, NPU_MEM_KEYS, DeviceSpec, PlatformSpec
 
 __all__ = [
     "ENTRY_POINT_GROUP", "ENV_VAR", "GRANULARITIES", "NPU_MEM_KEYS",

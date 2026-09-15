@@ -6,7 +6,7 @@ the whole runner. pytest picks the same files up unchanged if you have it.
 A check that cannot run here raises ``unittest.SkipTest``.
 
 These are the unit checks. Simulator behaviour is validated separately, by
-``./serving/validate.sh`` against recorded results.
+``./llmservingsim/serving/validate.sh`` against recorded results.
 """
 
 from __future__ import annotations

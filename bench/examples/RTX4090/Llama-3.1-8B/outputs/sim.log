@@ -10,8 +10,8 @@
                               [35mInput configuration[0m                               
 
   • [36mCluster config            [0m : bench/examples/RTX4090/Llama-[1;36m3.1[0m-8B/config.json
-  • [36mRun ID                    [0m : run_1789454282292592_1676237
-  • [36mASTRA-Sim inputs root     [0m : [35m/home/jinhwan.suk/LLMServingSim/astra-sim/inputs/runs/[0m[95mrun_1789454282292592_1676237[0m
+  • [36mRun ID                    [0m : run_1789475972934391_2174944
+  • [36mASTRA-Sim inputs root     [0m : [35m/tmp/claude-1973136164/-home-jinhwan-suk-LLMServingSim/16f96206-613c-48ee-8cde-3f608677457c/scratchpad/ns-port/astra-sim/inputs/runs/[0m[95mrun_1789475972934391_2174944[0m
   • [36mDataset                   [0m : workloads/sharegpt-llama-[1;36m3.1[0m-8b-[1;36m300[0m-sps10.jsonl
   • [36mMax num seqs              [0m : [1;36m256[0m
   • [36mMax batched tokens        [0m : [1;36m2048[0m
@@ -591,7 +591,7 @@ All Request Has Been Exited
 [1;35m────────────────────────────────────────────────────────────────────────────────[0m
 [1;36m▶ Simulation results...[0m
 
-Total simulation time: 0h 0m 5.920s
+Total simulation time: 0h 0m 5.793s
 [1;35m────────────────────────────── [0m[35mThroughput Results[0m[1;35m ──────────────────────────────[0m
 Total requests:                                                     300
 Total clocks (ns):                                                  183706634969
@@ -627,3 +627,4 @@ Median ITL (ms) :                                                   25.18
 P99 ITL (ms) :                                                      205.68
 [1;35m────────────────────────────────────────────────────────────────────────────────[0m
 Saving each request's information to output file: bench/examples/RTX4090/Llama-3.1-8B/outputs/sim.csv
+[2m[21:39:38.813][0m [1;36m[Main][0m [33mWARNING [0m Skipping ASTRA-Sim inputs cleanup because inputs_root is outside /home/jinhwan.suk/LLMServingSim/astra-sim/inputs/runs: /tmp/claude-1973136164/-home-jinhwan-suk-LLMServingSim/16f96206-613c-48ee-8cde-3f608677457c/scratchpad/ns-port/astra-sim/inputs/runs/run_1789475972934391_2174944

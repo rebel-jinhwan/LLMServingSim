@@ -35,7 +35,7 @@ for MODEL in "${MODELS[@]}"; do
 
     # --out-root: the profiler defaults to ./perf; in tree the bundles live
     # under configs/perf, next to the cluster and model configs.
-    cmd=(python3 -m profiler profile "$MODEL" --hardware "$HARDWARE" --out-root configs/perf)
+    cmd=(python3 -m llmservingsim.profiler profile "$MODEL" --hardware "$HARDWARE" --out-root configs/perf)
     cmd+=(--tp "$TP_DEGREES")
     cmd+=(--max-num-batched-tokens "$MAX_NUM_BATCHED_TOKENS")
     cmd+=(--max-num-seqs "$MAX_NUM_SEQS")

@@ -15,19 +15,19 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from platforms import bundle_dir_name, load_platform
-from profiler.core import logger as log
-from profiler.core.categories import (
+from llmservingsim.platforms import bundle_dir_name, load_platform
+from llmservingsim.profiler.core import logger as log
+from llmservingsim.profiler.core.categories import (
     CATEGORY_BY_NAME,
     Category,
     categories_for,
 )
-from profiler.core.config import (
+from llmservingsim.profiler.core.config import (
     Architecture, ProfileArgs, load_architecture, mnbt_bumped,
 )
-from profiler.core.engine import probe_limits, spin_down, spin_up
-from profiler.core.hooks.timings import TimingSample
-from profiler.core.writer import (
+from llmservingsim.profiler.core.engine import probe_limits, spin_down, spin_up
+from llmservingsim.profiler.core.hooks.timings import TimingSample
+from llmservingsim.profiler.core.writer import (
     persist_meta,
     replicate_tp_stable,
     sink_for,
@@ -215,7 +215,7 @@ def run_full(
             # decode kv distributions. Writes tp_root/skew.csv. A step
             # profile has no attention kernel to isolate, so none there.
             if not args.skip_skew and platform.granularity == "layer":
-                from profiler.core.skew import sample_skew
+                from llmservingsim.profiler.core.skew import sample_skew
                 sample_skew(llm, arch, args, limits, tp, tp_root)
         finally:
             spin_down(llm, tmpdir)

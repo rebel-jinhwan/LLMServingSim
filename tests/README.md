@@ -20,7 +20,7 @@ looking at.
 
 Simulator *behaviour* is validated separately: `./serving/validate.sh` runs
 every scenario against recorded clocks and regenerates the `bench/examples`
-comparisons. Run that after any change under `serving/`.
+comparisons. Run that after any change under `llmservingsim/serving/`.
 
 ## Environment
 

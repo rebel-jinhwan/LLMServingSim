@@ -19,7 +19,7 @@ simulator would otherwise assume the CUDA answer:
 | Shape of the profile | per-layer CSVs, TP emulated on one GPU, ASTRA-Sim adds the collectives | `step.csv`: one time per padded forward, TP on real ranks, collectives inside the measured time |
 | Scheduler | the in-tree port of vLLM's `Scheduler` | the vLLM plugin's own scheduler, run through vLLM's scheduler classes |
 
-`cuda` is built in, under `platforms/cuda/`. Everything else is a separate
+`cuda` is built in, under `llmservingsim/platforms/cuda/`. Everything else is a separate
 distribution that registers itself, exactly as its vLLM plugin does. The
 worked example is
 [`llmservingsim-rbln`](https://github.com/rebel-jinhwan/llmservingsim-rbln),
@@ -30,11 +30,11 @@ end-to-end examples, and LLMServingSim carries none of it.
 ## How a platform is chosen
 
 Every platform is a `PlatformSpec` subclass, and one registry holds them
-all: the subpackages of `platforms/` plus every class named by an
+all: the subpackages of `llmservingsim/platforms/` plus every class named by an
 installed `llmservingsim.platforms` entry point. `platforms.load_platform`
 resolves in this order and stops at the first hit:
 
-1. `--platform <name>` on `python -m profiler` or `python -m serving`.
+1. `--platform <name>` on `python -m llmservingsim.profiler` or `python -m llmservingsim.serving`.
 2. The `platform` key in the perf bundle's `meta.yaml`. The profiler
    writes it, so a simulation over a bundle needs no flag: a cluster
    config that names the hardware folder is enough.
@@ -88,7 +88,7 @@ rows.
 The profile times `execute_model` inside the worker. A real step also
 pays the scheduler, the executor round trip and output handling, so a
 raw step bundle runs a few percent fast. Two knobs carry that host time,
-calibrated against `python -m bench` the way `mem_util` is calibrated
+calibrated against `python -m llmservingsim.bench` the way `mem_util` is calibrated
 against `num_gpu_blocks`: `--step-overhead-us` on every step and
 `--prefill-step-overhead-us` on top for a step that carries a prefill
 chunk. Both can be set per instance in the cluster config.
@@ -127,8 +127,8 @@ through the in-tree runner from wherever they live.
 
 ## Running vLLM's scheduler instead of the port
 
-`serving/core/scheduler.py` is a port of vLLM's V1 scheduler. The
-`VllmScheduler` in `serving/core/vllm_scheduler.py` instead drives vLLM's
+`llmservingsim/serving/core/scheduler.py` is a port of vLLM's V1 scheduler. The
+`VllmScheduler` in `llmservingsim/serving/core/vllm_scheduler.py` instead drives vLLM's
 own scheduler classes, doing on the host side what `EngineCore` does:
 build the engine config from `configs/model/<model>.json`, let
 `scheduler_config.get_scheduler_cls()` pick the class, size a
@@ -177,7 +177,7 @@ device differs from another device in its numbers, while a platform differs
 from another platform in its code.
 
 ```yaml
-# platforms/cuda/devices/RTX4090.yaml
+# llmservingsim/platforms/cuda/devices/RTX4090.yaml
 name: RTX4090
 mem_size: 24         # GB
 mem_bw: 1008         # GB/s
@@ -228,7 +228,7 @@ how a cluster config that names only `hardware` resolves its platform.
 ## Writing a platform
 
 A platform is a `PlatformSpec` subclass. The same layout works in tree
-(a subpackage of `platforms/`) and out of tree (its own distribution),
+(a subpackage of `llmservingsim/platforms/`) and out of tree (its own distribution),
 and nothing but the entry point differs:
 
 ```
@@ -240,7 +240,7 @@ and nothing but the entry point differs:
 ```
 
 ```python
-from platforms.spec import PlatformSpec
+from llmservingsim.platforms.spec import PlatformSpec
 
 class ExamplePlatform(PlatformSpec):
     name = "example"
@@ -313,13 +313,13 @@ from that repository root lands where the configs already point.
 Cluster configs need nothing: `--cluster-config` takes a path, and an
 example's `config.json` is one. Architecture catalogs are not on that list on purpose: a
 catalog describes a model, not the hardware it runs on, so a `model_type`
-that is missing belongs in `profiler/models/` upstream.
+that is missing belongs in `llmservingsim/profiler/models/` upstream.
 
 Cluster configs resolve by name, so a deployment the platform was
 calibrated for is run without a path:
 
 ```bash
-python -m serving --cluster-config example_llama_tp4.json ...
+python -m llmservingsim.serving --cluster-config example_llama_tp4.json ...
 ```
 
 A path is a location, absolute or relative to the repo root. A bare name
@@ -343,7 +343,7 @@ subclass overrides only what differs:
 | `step_grid(args, limits)` | raises | The platform is step-granularity, where it is required |
 
 ```python
-from platforms.profile import PlatformProfile
+from llmservingsim.platforms.profile import PlatformProfile
 
 class ExampleProfile(PlatformProfile):
     TP_EMULATION = False

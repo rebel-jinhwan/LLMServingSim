@@ -1,7 +1,7 @@
 """``PlatformSpec``: the one object that describes a hardware platform.
 
 A platform is a subclass of
-``PlatformSpec``, built in (a subpackage of ``platforms/``) or out of tree
+``PlatformSpec``, built in (a subpackage of ``llmservingsim/platforms/``) or out of tree
 (a class named by an ``llmservingsim.platforms`` entry point). Either way it
 goes through the same registry (``platforms._registry``) and every
 capability is read off the spec instance.
@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Mapping
 
 if TYPE_CHECKING:
-    from platforms.profile import PlatformProfile
+    from llmservingsim.platforms.profile import PlatformProfile
 
 GRANULARITIES = ("layer", "step")
 
@@ -65,7 +65,7 @@ class PlatformSpec:
     @functools.cached_property
     def profile(self) -> PlatformProfile:
         """One profile instance, checked against the interface."""
-        from platforms.profile import PlatformProfile
+        from llmservingsim.platforms.profile import PlatformProfile
 
         prof = self.profile_cls()
         if not isinstance(prof, PlatformProfile):
@@ -105,7 +105,7 @@ class PlatformSpec:
             self._scheduler_bound = True
             self.bind_scheduler()
             if self._scheduler is None:
-                from serving.core.scheduler import Scheduler
+                from llmservingsim.serving.core.scheduler import Scheduler
                 self._scheduler = Scheduler
         assert self._scheduler is not None
         return self._scheduler

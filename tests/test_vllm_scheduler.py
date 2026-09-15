@@ -5,8 +5,8 @@ ShareGPT requests with a constant step time. Was
 
 import unittest
 
-from serving.core.scheduler import Scheduler
-from serving.core.vllm_scheduler import VllmScheduler
+from llmservingsim.serving.core.scheduler import Scheduler
+from llmservingsim.serving.core.vllm_scheduler import VllmScheduler
 
 
 def _require_upstream_vllm():
@@ -35,7 +35,7 @@ def test_vllm_scheduler():
     import json
     import os
     _require_upstream_vllm()
-    from serving.core.logger import configure_logger
+    from llmservingsim.serving.core.logger import configure_logger
     configure_logger(level="ERROR")
     os.environ.setdefault("VLLM_LOGGING_LEVEL", "ERROR")
     repo = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")

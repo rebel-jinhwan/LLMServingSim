@@ -432,7 +432,7 @@ def _hardware_facts() -> dict:
         else:
             # Other hardware describes itself through its platform, so no
             # vendor SDK is imported here.
-            from platforms import detect_platform
+            from llmservingsim.platforms import detect_platform
             platform = detect_platform()
             if platform is not None:
                 info = platform.profile.device_info()

@@ -1,7 +1,7 @@
 """Per-tier KV block pool: allocation order, the prefix-cache index, and the
 byte ledger. Was ``python -m serving.core.block_pool``."""
 
-from serving.core.block_pool import BlockPool, Device
+from llmservingsim.serving.core.block_pool import BlockPool, Device
 
 
 def test_block_pool():

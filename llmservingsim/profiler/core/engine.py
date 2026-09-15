@@ -27,9 +27,9 @@ from typing import Any
 import torch
 from vllm import LLM
 
-from platforms import load_platform
-from profiler.core import logger as log
-from profiler.core.config import (
+from llmservingsim.platforms import load_platform
+from llmservingsim.profiler.core import logger as log
+from llmservingsim.profiler.core.config import (
     HOST_ENGINE_DEFAULTS,
     SHARD_FIELDS,
     ProfileArgs,

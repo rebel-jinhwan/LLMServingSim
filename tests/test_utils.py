@@ -1,7 +1,7 @@
 """Model config loading: the subset of the HF config.json the simulator needs.
 Was the ``__main__`` block of ``serving/core/utils.py``."""
 
-from serving.core.utils import get_config
+from llmservingsim.serving.core.utils import get_config
 
 
 def test_get_config():

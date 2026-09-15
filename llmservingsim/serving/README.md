@@ -5,7 +5,7 @@ LLMServingSim simulator core. Run as `python -m llmservingsim.serving --cluster-
 ## Layout
 
 ```
-serving/                        Python package
+llmservingsim/serving/                        Python package
 ├── __init__.py                 module map
 ├── __main__.py                 simulation entry point + main loop
 ├── core/                       internals (every .py module documented below)
@@ -48,7 +48,7 @@ is not automatically a bug, but it always needs an explanation. See
 
 ## Architecture
 
-The simulation loop in `serving/__main__.py` orchestrates these modules per iteration:
+The simulation loop in `llmservingsim/serving/__main__.py` orchestrates these modules per iteration:
 
 1. **Router** dispatches incoming requests to instances
 2. **Scheduler** forms batches under memory and token budget constraints
@@ -61,7 +61,7 @@ The simulation loop in `serving/__main__.py` orchestrates these modules per iter
 
 The trace generator constructs per-iteration execution traces by walking the
 ordered ``sequence:`` section of the architecture yaml (
-`profiler/models/<model_type>.yaml`). For a standard decoder-only model:
+`llmservingsim/profiler/models/<model_type>.yaml`). For a standard decoder-only model:
 
 ```
 prologue (embedding)
@@ -99,15 +99,15 @@ kv_dim = kv_head * head_dim      # NOT n_embd // group
 
 ### Working directory
 
-`serving/__main__.py` changes cwd to `astra-sim/` early in execution. All relative paths in the
+`llmservingsim/serving/__main__.py` changes cwd to `astra-sim/` early in execution. All relative paths in the
 simulator resolve from `astra-sim/`, not the repo root. Paths to `configs/`, `workloads/`,
 `profiler/` are prefixed with `../` in code.
 
 ## Modules
 
-All modules below live under `serving/core/`. Imports inside the
+All modules below live under `llmservingsim/serving/core/`. Imports inside the
 subpackage use relative form (`from .X import ...`); external callers
-use `from serving.core.X import ...`.
+use `from llmservingsim.serving.core.X import ...`.
 
 ### `request.py`
 Defines the `Request` and `Batch` data classes. Tracks per-request state and latency
@@ -158,7 +158,7 @@ defers it to the next engine step on a dedicated stream.
 ### `trace_generator.py`
 Core performance estimator. Loads the profiler's per-category CSVs under
 `configs/perf/<hardware>--<model>--<variant>/tp<N>/` plus the architecture
-yaml (`profiler/models/<model_type>.yaml`) and walks the yaml's
+yaml (`llmservingsim/profiler/models/<model_type>.yaml`) and walks the yaml's
 ``sequence:`` section to emit each iteration's layers. Composable helpers:
 
 - `resolve_variant()` / `_load_perf_db()` / `_load_architecture()` — turn
@@ -195,7 +195,7 @@ Handles tensor parallelism (ALLREDUCE placement), MoE expert routing with
 `involved_dim` dimension scoping for DP+EP, PIM attention offloading, and
 sub-batch interleaving. The `comm_type` field supports dimension scoping
 (e.g., `ALLTOALL:0,1`) for multi-dimensional ASTRA-Sim topologies. To add a
-new model architecture, add an `profiler/models/<model_type>.yaml` with a
+new model architecture, add an `llmservingsim/profiler/models/<model_type>.yaml` with a
 matching `sequence:` rather than editing this file.
 
 ### `config_builder.py`

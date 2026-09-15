@@ -14,9 +14,9 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Callable, ClassVar, Iterator
 
 if TYPE_CHECKING:
-    from profiler.core.config import ProfileArgs
-    from profiler.core.engine import RuntimeLimits
-    from profiler.core.hooks.batch import Shot
+    from llmservingsim.profiler.core.config import ProfileArgs
+    from llmservingsim.profiler.core.engine import RuntimeLimits
+    from llmservingsim.profiler.core.hooks.batch import Shot
 
 
 class PlatformProfile(ABC):

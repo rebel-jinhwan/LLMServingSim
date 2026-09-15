@@ -6,8 +6,8 @@ from tqdm.auto import tqdm
 import pandas as pd
 from transformers import AutoConfig
 
-from profiler.utils import *
-from profiler.utils.logger import *
+from llmservingsim.profiler.utils import *
+from llmservingsim.profiler.utils.logger import *
 from .batch_sampling import *
 from .attention_profiler import profile_flash_attention
 

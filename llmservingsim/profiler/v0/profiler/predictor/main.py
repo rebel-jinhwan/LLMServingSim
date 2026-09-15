@@ -2,8 +2,8 @@ import os
 import argparse
 from transformers import AutoConfig
 
-from profiler.utils import *
-from profiler.utils.logger import *
+from llmservingsim.profiler.utils import *
+from llmservingsim.profiler.utils.logger import *
 from .build_sklearn_predictor_and_pred import *
 
 def parse_args():

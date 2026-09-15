@@ -28,7 +28,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 if TYPE_CHECKING:
-    from platforms import PlatformSpec
+    from llmservingsim.platforms import PlatformSpec
 
 
 # ---------------------------------------------------------------------------
@@ -359,7 +359,7 @@ class ProfileArgs:
     hardware: str
 
     platform: str = "cuda"
-    """Which ``platforms/<vendor>`` measures the shots and shapes the sweep
+    """Which ``llmservingsim/platforms/<vendor>`` measures the shots and shapes the sweep
     (``--platform``). Recorded in meta.yaml so the simulator picks the same
     one up without a flag."""
 

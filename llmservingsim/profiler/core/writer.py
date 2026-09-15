@@ -25,10 +25,10 @@ from typing import Any, Iterable
 
 import yaml
 
-from platforms import load_platform
-from profiler import __version__ as profiler_version
-from profiler.core import logger as log
-from profiler.core.categories import (
+from llmservingsim.platforms import load_platform
+from llmservingsim.profiler import __version__ as profiler_version
+from llmservingsim.profiler.core import logger as log
+from llmservingsim.profiler.core.categories import (
     AttentionPoint,
     Category,
     DensePoint,

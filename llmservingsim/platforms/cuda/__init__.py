@@ -7,10 +7,10 @@ from __future__ import annotations
 import importlib.util
 from typing import TYPE_CHECKING
 
-from platforms.spec import PlatformSpec
+from llmservingsim.platforms.spec import PlatformSpec
 
 if TYPE_CHECKING:
-    from platforms.profile import PlatformProfile
+    from llmservingsim.platforms.profile import PlatformProfile
 
 
 class CudaPlatform(PlatformSpec):
@@ -28,5 +28,5 @@ class CudaPlatform(PlatformSpec):
 
     @property
     def profile_cls(self) -> type[PlatformProfile]:
-        from platforms.cuda.profile import CudaProfile
+        from llmservingsim.platforms.cuda.profile import CudaProfile
         return CudaProfile

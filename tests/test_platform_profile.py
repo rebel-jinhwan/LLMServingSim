@@ -1,14 +1,14 @@
 """Every registered platform exposes a PlatformProfile, a step platform whose
 profile has no grid is refused, and an unbound scheduler falls back to the
-in-tree port. Was ``python -m platforms.profile``."""
+in-tree port. Was ``python -m llmservingsim.platforms.profile``."""
 
 
 def test_platform_profile() -> None:
     """Every registered platform's profile is a ``PlatformProfile``, and a
     step platform whose profile has no grid is refused."""
-    from platforms import registry
-    from platforms.profile import PlatformProfile as Base
-    from platforms.spec import PlatformSpec
+    from llmservingsim.platforms import registry
+    from llmservingsim.platforms.profile import PlatformProfile as Base
+    from llmservingsim.platforms.spec import PlatformSpec
 
     for spec in registry().values():
         assert isinstance(spec.profile, Base), (spec.name, type(spec.profile))
@@ -34,8 +34,8 @@ def test_scheduler_binding() -> None:
     """A platform binds its scheduler by assigning self.scheduler inside
     bind_scheduler(); one that assigns nothing takes the in-tree port, and
     assigning something that is not a class is refused on the spot."""
-    from platforms.spec import PlatformSpec
-    from serving.core.scheduler import Scheduler
+    from llmservingsim.platforms.spec import PlatformSpec
+    from llmservingsim.serving.core.scheduler import Scheduler
 
     class NoScheduler(PlatformSpec):
         name = "nosched"
@@ -50,7 +50,7 @@ def test_scheduler_binding() -> None:
         name = "badsched"
 
         def bind_scheduler(self):
-            self.scheduler = "serving.core.scheduler.Scheduler"
+            self.scheduler = "llmservingsim.serving.core.scheduler.Scheduler"
 
     assert NoScheduler().bind_scheduler() is None
     assert NoScheduler().scheduler is Scheduler

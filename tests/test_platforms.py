@@ -18,9 +18,9 @@ import types
 import unittest
 from pathlib import Path
 
-import platforms
-from platforms import _registry
-from platforms.spec import PlatformSpec
+from llmservingsim import platforms
+from llmservingsim.platforms import _registry
+from llmservingsim.platforms.spec import PlatformSpec
 
 
 class _EntryPoint:
@@ -67,7 +67,7 @@ def test_builtin_devices() -> None:
 
 def _check_device_validation() -> None:
     """A device yaml that would be silently misread is refused instead."""
-    from platforms.spec import DeviceSpec
+    from llmservingsim.platforms.spec import DeviceSpec
 
     root = Path(tempfile.mkdtemp(prefix="device_spec_"))
     ok = "mem_size: 1\nmem_bw: 1\nmem_latency: 0\n"
@@ -106,8 +106,8 @@ def test_perf_dir_from_cluster_config() -> None:
     """A cluster config's perf_dir is resolved against the config file and
     searched before the in-tree configs/perf."""
     try:
-        from serving.core.config_builder import _resolve_perf_dirs
-        from serving.core.trace_generator import _variant_root, set_perf_roots
+        from llmservingsim.serving.core.config_builder import _resolve_perf_dirs
+        from llmservingsim.serving.core.trace_generator import _variant_root, set_perf_roots
     except ImportError:
         raise unittest.SkipTest("the simulator's own dependencies are absent")
 
@@ -184,7 +184,7 @@ def test_plugin_discovery() -> None:
         reg = platforms.registry()
         assert "example" in reg and isinstance(reg["example"], ExamplePlatform), sorted(reg)
         assert "other" not in reg and "notaspec" not in reg and "broken" not in reg, sorted(reg)
-        assert type(reg["cuda"]).__module__ == "platforms.cuda", "a plugin replaced a built-in"
+        assert type(reg["cuda"]).__module__ == "llmservingsim.platforms.cuda", "a plugin replaced a built-in"
         joined = "\n".join(warnings)
         for needle in ("does not match", "not a PlatformSpec subclass", "missing_pkg", "already registered"):
             assert needle in joined, (needle, warnings)
@@ -197,7 +197,7 @@ def test_plugin_discovery() -> None:
         assert root / "perf" in platforms.resource_dirs("perf")
         assert root / "cluster" in platforms.resource_dirs("cluster")
         try:
-            from serving.core.config_builder import resolve_cluster_config
+            from llmservingsim.serving.core.config_builder import resolve_cluster_config
         except ImportError:
             pass  # the simulator's own dependencies are absent; this check needs only pyyaml
         else:
@@ -237,7 +237,7 @@ def test_plugin_discovery() -> None:
         logger.removeHandler(handler)
         os.environ.pop(_registry.ENV_VAR, None)
         for cls in (type(platforms.registry().get("cuda")),):
-            if "is_available" in vars(cls) and cls.__module__ == "platforms.cuda":
+            if "is_available" in vars(cls) and cls.__module__ == "llmservingsim.platforms.cuda":
                 del cls.is_available  # restore the class's own probe
         _reset()
     print("ok: plugins register through entry points with their own devices/, perf/ and cluster/; "

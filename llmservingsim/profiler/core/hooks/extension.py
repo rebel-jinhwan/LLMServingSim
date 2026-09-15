@@ -62,13 +62,13 @@ class Extension:
                 ``"moe"``. Used to decide whether to forge MoE routing.
             iterations: Number of timed forward passes (averaged via
                 the hook's invocation count). Default 3.
-            platform: Name of the ``platforms/<vendor>`` whose
+            platform: Name of the ``llmservingsim/platforms/<vendor>`` whose
                 ``profile.measure`` times the forwards.
 
         Returns:
             List of ``TimingSample`` as plain dicts (pickled back to host).
         """
-        from platforms import load_platform
+        from llmservingsim.platforms import load_platform
 
         shot = Shot.hydrate(shot_dict)
         iterations = max(1, int(iterations))

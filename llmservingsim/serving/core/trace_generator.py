@@ -10,7 +10,7 @@ from .power_model import PowerModel, total_ring_data
 from .pim_model import PIMModel
 from .logger import get_logger
 from .run_paths import input_path
-from platforms import bundle_dir_name
+from llmservingsim.platforms import bundle_dir_name
 import bisect
 from dataclasses import dataclass, field
 
@@ -91,7 +91,7 @@ def _variant_root(hardware, model, variant):
     """The cluster config's ``perf_dir`` roots first, then the in-tree
     ``configs/perf``, then bundles a platform ships in its own ``perf/``.
     A miss returns the in-tree path so errors name it."""
-    from platforms import resource_dirs
+    from llmservingsim.platforms import resource_dirs
     name = bundle_dir_name(hardware, model, variant)
     in_tree = f"{_PERF_ROOT_REL}/{name}"
     for root in _extra_perf_roots:
@@ -1189,7 +1189,7 @@ def _emit_moe_block(ctx, bctx, lines, power_acc, layer_num, batch_id_str, batch_
     routing = ctx.gate.route_ep(layer_num, batch_id_str, effective_total_len_compute, ep_total)
 
     # AG/RS comm sizes are anchored to ``dp_sum_total_len``, which
-    # ``serving/__main__.py`` sets to ``max_total_len`` (NOT ``max × dp_group_size``)
+    # ``llmservingsim/serving/__main__.py`` sets to ``max_total_len`` (NOT ``max × dp_group_size``)
     # for DP groups; this calibrates the AG/RS bandwidth model against the same
     # ``link_bw`` that already matches AllReduce. Falls back to this rank's own
     # ``total_len`` when DP is inactive.

@@ -17,7 +17,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"                    # .../LLMServingSim
 #   rich          llmservingsim/serving/ and bench/ loggers
 #   pandas        scheduler, trace_generator, pim_model
 #   numpy         scheduler
-#   matplotlib    bench/core/plots.py, reached by `python -m bench validate`
+#   matplotlib    bench/core/plots.py, reached by `python -m llmservingsim.bench validate`
 # The versions are pinned for this image, so the repo goes in with --no-deps:
 # that is only for the import paths, so `import serving` works from any cwd.
 docker run --name servingsim_docker \

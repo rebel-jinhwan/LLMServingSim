@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from platforms.profile import PlatformProfile
+from llmservingsim.platforms.profile import PlatformProfile
 
 
 class CudaProfile(PlatformProfile):
@@ -36,7 +36,7 @@ class CudaProfile(PlatformProfile):
         per-call mean."""
         from vllm.profiler.layerwise_profile import layerwise_profile
 
-        from profiler.core.hooks.timings import extract_samples
+        from llmservingsim.profiler.core.hooks.timings import extract_samples
 
         with layerwise_profile() as hook:
             for _ in range(iterations):

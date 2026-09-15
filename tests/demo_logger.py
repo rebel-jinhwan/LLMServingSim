@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from serving.core.logger import (  # noqa: E402
+from llmservingsim.serving.core.logger import (  # noqa: E402
     configure_logger, get_logger, print_banner, progress, stage)
 
 

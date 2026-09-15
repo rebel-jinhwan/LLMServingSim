@@ -46,9 +46,9 @@ import shutil
 import sys
 from pathlib import Path
 
-from platforms import load_device, load_platform
-from profiler.core import logger as log
-from profiler.core.config import (
+from llmservingsim.platforms import load_device, load_platform
+from llmservingsim.profiler.core import logger as log
+from llmservingsim.profiler.core.config import (
     ProfileArgs,
     detect_model_type,
     read_model_config,

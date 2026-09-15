@@ -189,9 +189,9 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
   too generic to publish. **Only code and the architecture yamls moved in.**
   Every bulk-data directory keeps its own name at the repository root —
   `configs/`, `workloads/` (the `.jsonl` datasets and the shell recipes that
-  regenerate them), `profiler/perf/`, `profiler/power/`, `bench/examples/`,
+  regenerate them), `configs/perf/`, `profiler/power/`, `bench/examples/`,
   `astra-sim/`, `scripts/`, `docs/` and `outputs/` — so `--dataset
-  workloads/example_trace.jsonl`, `profiler/perf/<hw>/...` and
+  workloads/example_trace.jsonl`, `configs/perf/<bundle>/...` and
   `./bench/examples/validate.sh` are all unchanged. The only paths that moved
   are the Python modules and the shell wrappers that sit next to them
   (`./llmservingsim/serving/validate.sh`,
@@ -237,7 +237,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
   combine -- and the kernel is linear in each axis (decode attention fits
   `time_us = a + b * (n_decode * kv_decode)` at R^2 = 1.0000). Leave-one-out over the
   measured grid puts log space at +11.6-14.4% mean error against +2.3-3.7% for linear,
-  on all four axes across every bundle in `profiler/perf/`
+  on all four axes across every bundle in `configs/perf/`
 - With no skew profile the simulator applies **no** skew correction
   (`_ATTN_SKEW_ALPHA_FALLBACK` 0.093 -> 0, i.e. `t_mean`) rather than a borrowed
   constant; bundles with a real `skew_fit` are unaffected. The blend endpoints are far

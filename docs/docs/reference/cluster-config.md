@@ -176,12 +176,12 @@ Three rules the table cannot show:
 | Field | Type | Description |
 | --- | --- | --- |
 | `model_name` | string | HF id. Must match a config at `configs/model/<model_name>.json` (see **[Model config](./model-config)**) |
-| `hardware` | string | Hardware label. Must be the `<hardware>` prefix of a bundle in `configs/perf/`, and names the device spec `platforms/<vendor>/devices/<hardware>.yaml` when one exists |
+| `hardware` | string | Hardware label. Must be the `<hardware>` prefix of a bundle in `configs/perf/`, and names the device spec `llmservingsim/platforms/<vendor>/devices/<hardware>.yaml` when one exists |
 | `pd_type` | string \| null | `"prefill"`, `"decode"`, or `null` (combined) |
 
 ### NPU memory (`npu_mem`)
 
-A device with a spec under `platforms/<vendor>/devices/` supplies these
+A device with a spec under `llmservingsim/platforms/<vendor>/devices/` supplies these
 defaults, so `npu_mem` can be left out entirely. Whatever an instance does
 state overrides the spec key by key, which is how a config records a
 deployment-specific value such as `mem_util`. A device with no spec needs

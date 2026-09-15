@@ -1,7 +1,7 @@
 """Discovery of built-in and out-of-tree platforms.
 
 - Built-in platforms are ``PlatformSpec`` subclasses defined in a subpackage
-  of ``platforms/`` (its ``__init__``); no registration list.
+  of ``llmservingsim/platforms/`` (its ``__init__``); no registration list.
 - Out-of-tree platforms are classes named by the ``llmservingsim.platforms``
   entry-point group, for example in a vendor package's pyproject.toml::
 
@@ -30,7 +30,7 @@ import pkgutil
 import re
 from importlib.metadata import entry_points
 
-from platforms.spec import GRANULARITIES, PlatformSpec
+from llmservingsim.platforms.spec import GRANULARITIES, PlatformSpec
 
 ENTRY_POINT_GROUP = "llmservingsim.platforms"
 ENV_VAR = "LLMSERVINGSIM_PLATFORM"
@@ -57,13 +57,13 @@ def validate_spec(obj: object, expected_name: str | None = None) -> PlatformSpec
 
 
 def _builtin_specs() -> list[PlatformSpec]:
-    import platforms
+    from llmservingsim import platforms
 
     specs = []
     for mod in sorted(pkgutil.iter_modules(platforms.__path__), key=lambda m: m.name):
         if not mod.ispkg:
             continue
-        modname = f"platforms.{mod.name}"
+        modname = f"llmservingsim.platforms.{mod.name}"
         try:
             module = importlib.import_module(modname)
         except Exception as e:  # noqa: BLE001 - one broken platform must not hide the rest

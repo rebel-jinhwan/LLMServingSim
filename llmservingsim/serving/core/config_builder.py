@@ -339,7 +339,7 @@ def resolve_cluster_config(path):
     candidates = [os.path.join('..', path)]
     if not os.path.dirname(path):
         candidates.append(os.path.join('..', 'configs', 'cluster', path))
-        from platforms import resource_dirs
+        from llmservingsim.platforms import resource_dirs
         candidates += [str(d / path) for d in resource_dirs('cluster')]
     for candidate in candidates:
         if os.path.isfile(candidate):
@@ -513,7 +513,7 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
 
             # Device facts come from platforms/<vendor>/devices/<hardware>.yaml;
             # whatever the instance states in npu_mem overrides them key by key.
-            from platforms import resolve_npu_mem
+            from llmservingsim.platforms import resolve_npu_mem
             instance["npu_mem"] = resolve_npu_mem(instance["hardware"], instance.get("npu_mem"))
 
             # Resolve tp_size, pp_size, ep_size from partial config

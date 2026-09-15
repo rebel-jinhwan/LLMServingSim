@@ -4,7 +4,7 @@ import torch
 from torch.profiler import record_function
 
 from .timer_stats_store import TimerStatsStore
-from profiler.utils import ProfileMethod
+from llmservingsim.profiler.utils import ProfileMethod
 
 # Modified from https://github.com/microsoft/vidur
 

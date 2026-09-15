@@ -1,8 +1,8 @@
 """Tiered KV cache manager: block hashing, allocation across tiers, and what
 survives a preemption. Was ``python -m serving.core.kv_cache_manager``."""
 
-from serving.core.block_pool import BlockPool, Device
-from serving.core.kv_cache_manager import TieredKVCacheManager, request_block_hashes
+from llmservingsim.serving.core.block_pool import BlockPool, Device
+from llmservingsim.serving.core.kv_cache_manager import TieredKVCacheManager, request_block_hashes
 
 
 def test_kv_cache_manager():

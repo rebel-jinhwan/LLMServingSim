@@ -30,7 +30,7 @@ from llmservingsim.profiler.core.hooks.batch import Shot
 from llmservingsim.profiler.core.hooks.timings import TimingSample
 
 if TYPE_CHECKING:
-    from platforms import PlatformSpec
+    from llmservingsim.platforms import PlatformSpec
 
 
 # ---------------------------------------------------------------------------
@@ -557,7 +557,7 @@ class StepCategory(AttentionCategory):
     label = "step"
 
     def compose_shots(self, arch, args, limits, tp):
-        from platforms import load_platform
+        from llmservingsim.platforms import load_platform
         yield from load_platform(args.platform).profile.step_grid(args, limits)
 
     def extract_points_all_ranks(self, shot, per_rank_us, tp):
