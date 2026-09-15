@@ -4,10 +4,13 @@ Unit checks for the parts that simulating does not cover: the block pool, the
 tiered KV cache manager, and model config loading.
 
 ```bash
-pip install pytest
+pip install -e '.[dev]'
 pytest                      # everything
 pytest tests/test_block_pool.py
 ```
+
+`.github/workflows/tests.yml` runs the same `pytest` on every push and pull
+request.
 
 Plain `test_*()` functions that assert — no fixtures, no helpers, no base
 classes. `conftest.py` puts the repository root on `sys.path`, so no
