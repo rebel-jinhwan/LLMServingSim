@@ -27,6 +27,7 @@ import tempfile
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
@@ -35,6 +36,7 @@ from rich.progress import (
     MofNCompleteColumn,
     Progress,
     SpinnerColumn,
+    TaskID,
     TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
@@ -152,23 +154,23 @@ def capture_stdio() -> Iterator[None]:
 # --- convenience wrappers ---------------------------------------------------
 
 
-def info(msg: str, *args, **kw) -> None:
+def info(msg: str, *args: Any, **kw: Any) -> None:
     _logger.info(msg, *args, **kw)
 
 
-def warning(msg: str, *args, **kw) -> None:
+def warning(msg: str, *args: Any, **kw: Any) -> None:
     _logger.warning(msg, *args, **kw)
 
 
-def error(msg: str, *args, **kw) -> None:
+def error(msg: str, *args: Any, **kw: Any) -> None:
     _logger.error(msg, *args, **kw)
 
 
-def debug(msg: str, *args, **kw) -> None:
+def debug(msg: str, *args: Any, **kw: Any) -> None:
     _logger.debug(msg, *args, **kw)
 
 
-def success(msg: str, *args, **kw) -> None:
+def success(msg: str, *args: Any, **kw: Any) -> None:
     """INFO-level line tagged with a green check-mark."""
     _logger.info("[ok]✓[/ok] " + msg, *args, **kw)
 
@@ -235,7 +237,7 @@ def progress(label: str, total: int) -> Iterator[_Bar]:
 class _Bar:
     """Tiny adapter around rich.progress.Progress + a task id."""
 
-    def __init__(self, bar: Progress, task: int) -> None:
+    def __init__(self, bar: Progress, task: TaskID) -> None:
         self._bar = bar
         self._task = task
 

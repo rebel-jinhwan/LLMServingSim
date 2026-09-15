@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import logging
 import textwrap
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator, MutableMapping
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Any
@@ -45,6 +45,7 @@ from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
     Progress,
+    TaskID,
     TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
@@ -235,7 +236,9 @@ class ComponentLoggerAdapter(logging.LoggerAdapter):
         self.node_id = node_id
         self.instance_id = instance_id
 
-    def process(self, msg: Any, kwargs: dict) -> tuple[Any, dict]:
+    def process(
+        self, msg: Any, kwargs: MutableMapping[str, Any]
+    ) -> tuple[Any, MutableMapping[str, Any]]:
         extra = kwargs.get("extra") or {}
         extra.setdefault("component", self.component)
         extra.setdefault("node_id", self.node_id)
@@ -438,7 +441,7 @@ def print_input_config(args: Any) -> None:
 
     items: list[tuple[str, Any]] = []
 
-    def add(attr: str, label: str, conv=lambda v: v) -> None:
+    def add(attr: str, label: str, conv: Callable[[Any], Any] = lambda v: v) -> None:
         if hasattr(args, attr):
             items.append((label, conv(getattr(args, attr))))
 
@@ -506,7 +509,7 @@ def stage(title: str) -> Iterator[None]:
 class _Bar:
     """Thin handle around rich's ``TaskID`` so callers don't import rich."""
 
-    def __init__(self, progress: Progress, task_id: Any) -> None:
+    def __init__(self, progress: Progress, task_id: TaskID) -> None:
         self._progress = progress
         self._task_id = task_id
 

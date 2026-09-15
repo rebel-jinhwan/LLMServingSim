@@ -37,7 +37,7 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from rich.console import Console
 from rich.logging import RichHandler
@@ -45,6 +45,7 @@ from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
     Progress,
+    TaskID,
     TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
@@ -208,23 +209,23 @@ def capture_stdio() -> Iterator[None]:
 # --- convenience wrappers ---------------------------------------------------
 
 
-def info(msg: str, *args, **kw) -> None:
+def info(msg: str, *args: Any, **kw: Any) -> None:
     _logger.info(msg, *args, **kw)
 
 
-def warning(msg: str, *args, **kw) -> None:
+def warning(msg: str, *args: Any, **kw: Any) -> None:
     _logger.warning(msg, *args, **kw)
 
 
-def error(msg: str, *args, **kw) -> None:
+def error(msg: str, *args: Any, **kw: Any) -> None:
     _logger.error(msg, *args, **kw)
 
 
-def debug(msg: str, *args, **kw) -> None:
+def debug(msg: str, *args: Any, **kw: Any) -> None:
     _logger.debug(msg, *args, **kw)
 
 
-def success(msg: str, *args, **kw) -> None:
+def success(msg: str, *args: Any, **kw: Any) -> None:
     """A log line tagged as 'SUCCESS'.
 
     Python's logging module has no SUCCESS level. We emit at INFO with
@@ -274,7 +275,7 @@ def stage(title: str) -> Iterator[None]:
 class Bar:
     """Thin handle around rich's ``TaskID`` so callers don't import rich."""
 
-    def __init__(self, progress: Progress, task_id):
+    def __init__(self, progress: Progress, task_id: TaskID) -> None:
         self._progress = progress
         self._task_id = task_id
 

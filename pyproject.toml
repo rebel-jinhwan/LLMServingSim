@@ -26,12 +26,13 @@ Source = "https://github.com/casys-kaist/LLMServingSim"
 # The profiler and bench need vLLM and its stack, which is installed per
 # environment (scripts/install-vllm.sh, or the container image).
 #
-# ruff is pinned here and nowhere else: CI and a local checkout both get it
-# from `pip install -e '.[dev]'`, so a bump is one edit, in the commit that also
-# carries whatever reformatting it wants.
+# ruff and mypy are pinned here and nowhere else: CI, pre-commit and a local
+# checkout all get the tooling from `pip install -e '.[dev]'`, so a bump is one
+# edit, in the commit that also carries whatever reformatting it wants.
 dev = [
     "pytest",
     "ruff==0.16.7",
+    "mypy==2.3.1",
 ]
 
 [tool.setuptools.packages.find]
@@ -100,3 +101,39 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["llmservingsim"]
+
+# ---------------------------------------------------------------------------
+# mypy is opt-in, one module at a time. The codebase predates any type checking
+# and is nowhere near clean, so `ignore_errors` is on globally: mypy still
+# parses everything (so an opted-in module gets real types for what it imports)
+# but only reports on the modules listed below. To tighten, annotate a module
+# and add it to the override -- never by flipping the global default, which
+# would dump thousands of errors into CI in one go. Run `mypy` from the root.
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.10"
+files = ["llmservingsim"]
+# astra-sim is a submodule (AGENTS.md: do not edit it) and
+# llmservingsim/profiler/v0 is the legacy profiler, kept only for reference.
+exclude = "(?x)(^astra-sim/|^llmservingsim/profiler/v0/)"
+# vLLM, torch, rich, matplotlib and the Chakra converter are optional at
+# simulate time and absent in CI, which has no GPU and no ASTRA-Sim build.
+ignore_missing_imports = true
+warn_unused_configs = true
+ignore_errors = true
+
+# Opted in: modules that already carry annotations throughout. They get
+# disallow_untyped_defs / disallow_incomplete_defs and nothing more.
+# warn_return_any is deliberately left off: pydantic and yaml hand back Any at
+# the library boundary, so the rule fires there rather than on anything we
+# wrote.
+[[tool.mypy.overrides]]
+module = [
+    "llmservingsim.serving.core.logger",
+    "llmservingsim.bench.core.logger",
+    "llmservingsim.profiler.core.logger",
+    "llmservingsim.profiler.core.config",
+]
+ignore_errors = false
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
