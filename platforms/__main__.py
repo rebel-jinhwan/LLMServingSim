@@ -2,7 +2,7 @@
 
 Needs only pyyaml. Out-of-tree discovery is exercised with fake entry points,
 so no plugin has to be installed:
-a valid plugin with its own devices/, perf/ and configs/; a name that does not
+a valid plugin with its own devices/, perf/ and cluster/; a name that does not
 match its entry point; a target that is not a PlatformSpec; a plugin that
 fails to import; and a plugin reusing a built-in name.
 """
@@ -97,8 +97,8 @@ def _check_plugins() -> None:
     (root / "devices" / "EXAMPLE-D1.yaml").write_text(
         "name: EXAMPLE-D1\nmem_size: 32\nmem_bw: 500\nmem_latency: 0\n")
     (root / "perf" / "EXAMPLE-D1" / "org" / "model" / "bf16").mkdir(parents=True)
-    (root / "configs" / "cluster").mkdir(parents=True)
-    (root / "configs" / "cluster" / "example_one_node.json").write_text("{}\n")
+    (root / "cluster").mkdir()
+    (root / "cluster" / "example_one_node.json").write_text("{}\n")
 
     example = types.ModuleType("example_plugin")
 
@@ -147,14 +147,14 @@ def _check_plugins() -> None:
         assert device.supports_kv_cache_dtype("auto") and not device.supports_kv_cache_dtype("fp8"), device
         assert platforms.load_platform(hardware="EXAMPLE-D1").name == "example"
         assert root / "perf" in platforms.resource_dirs("perf")
-        assert root / "configs" in platforms.resource_dirs("configs")
+        assert root / "cluster" in platforms.resource_dirs("cluster")
         try:
             from serving.core.config_builder import resolve_cluster_config
         except ImportError:
             pass  # the simulator's own dependencies are absent; this check needs only pyyaml
         else:
             found = resolve_cluster_config("example_one_node.json")
-            assert found == str(root / "configs" / "cluster" / "example_one_node.json"), found
+            assert found == str(root / "cluster" / "example_one_node.json"), found
             assert resolve_cluster_config("configs/cluster/single_node_single_instance.json") \
                 == "../configs/cluster/single_node_single_instance.json"
             assert resolve_cluster_config("/abs/path.json") == "/abs/path.json"
@@ -192,7 +192,7 @@ def _check_plugins() -> None:
             if "is_available" in vars(cls) and cls.__module__ == "platforms.cuda":
                 del cls.is_available  # restore the class's own probe
         _reset()
-    print("ok: plugins register through entry points with their own devices/, perf/ and configs/; "
+    print("ok: plugins register through entry points with their own devices/, perf/ and cluster/; "
           "misnamed, non-spec, broken and duplicate plugins are skipped with a warning; "
           "selection by name, env var, device and detection")
 

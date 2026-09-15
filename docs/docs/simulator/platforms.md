@@ -236,7 +236,7 @@ and nothing but the entry point differs:
 <pkg>/profile.py                class <Vendor>Profile(PlatformProfile)
 <pkg>/devices/<hardware>.yaml   memory facts, fp8 support
 <pkg>/perf/<hardware>/...       perf bundles the platform ships, optional
-<pkg>/configs/cluster/*.json    cluster configs, found by name, optional
+<pkg>/cluster/*.json            cluster configs, found by name, optional
 ```
 
 ```python
@@ -286,7 +286,7 @@ example = "example_pkg:ExamplePlatform"
 
 The entry-point name must equal the spec's `name`. Anything the platform
 ships as files lives next to its module: `devices/`, `perf/` and
-`configs/` are searched after the in-tree locations, so a plugin can ship
+`cluster/` are searched after the in-tree locations, so a plugin can ship
 its own device specs, perf bundles and cluster configs without touching
 LLMServingSim. Architecture catalogs are not on that list on purpose: a
 catalog describes a model, not the hardware it runs on, so a `model_type`
@@ -301,7 +301,7 @@ python -m serving --cluster-config example_llama_tp4.json ...
 
 A path is a location, absolute or relative to the repo root. A bare name
 is a lookup: the in-tree `configs/cluster/` first, then each registered
-platform's. A path that names a directory is never searched for by name,
+platform's `cluster/`. A path that names a directory is never searched for by name,
 so a mistyped directory fails where it was typed.
 
 ### The profiler side
