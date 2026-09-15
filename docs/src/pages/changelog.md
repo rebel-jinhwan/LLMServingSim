@@ -9,6 +9,57 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
 ## [Unreleased]
 
 ### Added
+- `bench/examples/RBLN-CR03/Llama-3.2-1B-Instruct-pd` — the first prefill/decode
+  disaggregation example against real servers: Llama-3.2-1B-Instruct split over two
+  RBLN-CR03 with vllm-rbln's NIXL connector (host-bounce, upstream NIXL 1.3.1 over UCX)
+  behind vLLM's disaggregation proxy. Each calibration knob is fitted from one part of
+  the servers' Prometheus metrics; TTFT / TPOT / latency mean land at -0.6% / +0.9% /
+  +0.8%, from -50.8% / -19.7% / -22.9% uncalibrated. The vLLM-driven scheduler now sends a
+  request's KV once, on its final prefill step, rounded up to whole blocks, as NIXL does.
+- Prefill/decode disaggregation with the vLLM-driven scheduler and step-granularity
+  bundles, following vLLM's NIXL flow. A prefill instance runs requests with
+  `max_tokens=1` as the disaggregation proxy does; a decode instance carries vLLM's
+  `DecodeBenchConnector`, so its first step computes the last prompt token, where NIXL
+  leaves a request once its KV arrives. A prefill instance's step rows carry the KV
+  bytes, and `scripts/patches/chakra-step-trace.patch` (replacing
+  `chakra-single-row-trace.patch`) lets the converter send them from a `step` row.
+  Adds `configs/cluster/rbln_cr03_llama_3.2_1b_pd.json` and a Llama-3.2-1B-Instruct
+  step bundle for RBLN-CR03.
+- `platforms/<vendor>/devices/<hardware>.yaml` — one spec per device (RTX4090,
+  RTXPRO6000, H100, RBLN-CR03) holding the hardware facts every deployment shares:
+  `npu_mem` defaults and the KV cache dtypes the device runs. A cluster config's
+  `npu_mem` is now optional for a device with a spec and overrides it key by key,
+  so the configs keep only deployment-specific values such as `mem_util`. The
+  simulator and the profiler refuse an unsupported `kv_cache_dtype`, the profiler
+  before booting (fp8 KV on RBLN-CR03 used to fail minutes into compilation).
+  `python -m platforms` checks the specs and the merge.
+- `platforms/` — platform plugins, the simulator's counterpart to vLLM's out-of-tree
+  platform plugins. One package per vendor with `profile.py` (how a shot is measured,
+  whether TP is emulated on one device) and `simulator.py` (which scheduler runs),
+  resolved by `--platform`, by the `platform` key the profiler now writes to
+  `meta.yaml`, or by an installed `llmservingsim.platforms` entry point. `cuda` is the
+  existing behaviour. `rbln` (Rebellions NPUs through vllm-rbln) profiles at **step
+  granularity** — one wall-clock time per padded forward into `tp<N>/step.csv`, TP on
+  real ranks with the collectives inside the measured time — and the trace generator
+  emits one `step` row per iteration, snapping a batch to the profiled prefill chunk and
+  decode bucket before the kv-axis interpolation.
+- `bench/examples/RBLN-CR03/` — the first non-CUDA examples, MiniMax-M2.5 on four
+  RBLN-CR03 (tp4 + EP) and gpt-oss-120b on one, from vLLM 0.26 + vllm-rbln runs and
+  step-granularity bundles driven by vllm-rbln's own scheduler. Two calibration knobs,
+  `--step-overhead-us` and `--prefill-step-overhead-us` (per instance in the cluster
+  config), carry the host time a step profile does not measure; raw bundles run 4-30%
+  fast, calibrated ones land within 1% on TTFT, TPOT and latency means. `--engine-kwargs`
+  on the profiler, bench and simulator passes the EngineArgs a deployment pins.
+- `serving/core/vllm_scheduler.py` — `VllmScheduler` drives vLLM's own scheduler classes
+  the way `EngineCore` does on the host (`EngineArgs.create_engine_config()`,
+  `get_scheduler_cls()`, a `KVCacheConfig` sized from the memory model, then
+  `schedule()` / `update_from_output()` around the simulated forward). The `rbln`
+  platform pins it to vllm-rbln's `RBLNScheduler`, so that plugin's scheduling runs
+  verbatim; `--scheduler vllm` selects it for any platform. Against the in-tree port on
+  the same ShareGPT requests the batches are identical while nothing is preempted, and
+  differ under KV pressure only by vLLM's reserved null block (`python -m
+  serving.core.vllm_scheduler`). Needs vLLM importable in the simulator container; P/D
+  and `--prefix-storage` (KV connectors in vLLM) stay with the port.
 - `docs/scripts/check-rendered.mjs` — scans the built site for source syntax that
   survived into visible text (unparsed admonitions, bold, links, headings, table rows,
   doubled list markers, visible HTML comments, JSX brace leaks), plus a structural

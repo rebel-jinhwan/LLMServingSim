@@ -144,7 +144,7 @@ Three rules the table cannot show:
 {
   "model_name": "Qwen/Qwen3-32B",
   "hardware": "RTXPRO6000",
-  "npu_mem": {"mem_size": 96, "mem_bw": 1597, "mem_latency": 0},
+  "npu_mem": {"mem_util": 0.9},
   "num_npus": 2,
   "tp_size": 2,
   "pp_size": 1,
@@ -162,11 +162,26 @@ Three rules the table cannot show:
 | Field | Type | Description |
 | --- | --- | --- |
 | `model_name` | string | HF id. Must match a config at `configs/model/<model_name>.json` (see **[Model config](./model-config)**) |
-| `hardware` | string | Hardware label. Must match `profiler/perf/<hardware>/` |
-| `npu_mem.mem_size` | float | Per-GPU NPU memory in **GB** |
-| `npu_mem.mem_bw` | float | Per-GPU NPU memory bandwidth in **GB/s** |
-| `npu_mem.mem_latency` | float | Per-GPU NPU memory latency in **ns** |
+| `hardware` | string | Hardware label. Must match `profiler/perf/<hardware>/`, and names the device spec `platforms/<vendor>/devices/<hardware>.yaml` when one exists |
 | `pd_type` | string \| null | `"prefill"`, `"decode"`, or `null` (combined) |
+
+### NPU memory (`npu_mem`)
+
+A device with a spec under `platforms/<vendor>/devices/` supplies these
+defaults, so `npu_mem` can be left out entirely. Whatever an instance does
+state overrides the spec key by key, which is how a config records a
+deployment-specific value such as `mem_util`. A device with no spec needs
+all three of `mem_size`, `mem_bw` and `mem_latency`.
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `npu_mem.mem_size` | float | from the device spec | Per-NPU memory in **GB** |
+| `npu_mem.mem_bw` | float | from the device spec | Per-NPU memory bandwidth in **GB/s** |
+| `npu_mem.mem_latency` | float | from the device spec | Per-NPU memory latency in **ns** |
+
+The spec also lists the KV cache dtypes the device runs, and an instance
+whose `kv_cache_dtype` is not among them is refused before the simulation
+starts. See **[Platforms](../simulator/platforms#devices)**.
 
 ### Parallelism (at least one of `num_npus` / `tp_size`)
 

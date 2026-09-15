@@ -30,11 +30,20 @@ LLMServingSim/
 │   │   ├── request.py          # Request/Batch data classes
 │   │   ├── block_pool.py       # Per-tier KV block pool + prefix-cache index
 │   │   ├── kv_cache_manager.py # Tiered KV cache manager (block hashing, allocation)
+│   │   ├── vllm_scheduler.py   # Drives vLLM's own Scheduler (or a plugin's) in place of scheduler.py
 │   │   ├── logger.py           # Rich-based logger + stdio capture
 │   │   └── utils.py            # Model config loading, formatting
 │   ├── run.sh                  # One runnable example per feature (a menu, not a suite)
 │   ├── validate.sh             # every scenario vs recorded clocks + bench/examples digests
 │   └── validate-baselines.txt  # the recorded values; refresh with validate.sh --update
+├── platforms/                  # Platform plugins: how a vLLM hardware platform differs from CUDA
+│   ├── __init__.py             # load_platform(): --platform, meta.yaml::platform, entry points, cuda
+│   ├── profile.py              # PlatformProfile: the profiler-side interface, CUDA defaults
+│   ├── __main__.py             # `python -m platforms`: device specs + PlatformProfile checks
+│   ├── cuda/                   # NAME/GRANULARITY, profile.py (layerwise_profile), simulator.py (port)
+│   │   └── devices/            # RTX4090.yaml, RTXPRO6000.yaml, H100.yaml
+│   └── rbln/                   # step granularity, profile.py (wall-clock step grid), simulator.py (RBLNScheduler)
+│       └── devices/            # RBLN-CR03.yaml
 ├── configs/
 │   ├── cluster/                # Cluster topology configs (hardware, memory, instances)
 │   ├── model/                  # Model architecture configs (subset of HF config.json)
@@ -130,6 +139,160 @@ scheduler.py → next iteration
 - **Comments**: use English only — no Korean or other non-English text in comments, docstrings, or log messages
 
 ## Architecture Patterns
+
+### Platforms (`platforms/`)
+vLLM runs on non-CUDA hardware through out-of-tree platform plugins
+(`vllm.platform_plugins` entry points; `vllm-rbln` is one). `platforms/` is
+the simulator's counterpart: one package per vendor with `NAME`,
+`GRANULARITY` and two submodules imported on demand, so the profiler side
+(needs vLLM + torch) never loads in the simulator container and vice versa:
+
+- `profile.py`: `PROFILE`, an instance of a subclass of
+  `platforms/profile.py::PlatformProfile`. The base class holds the CUDA
+  defaults, so a platform overrides only what differs: `ENGINE_KWARGS`
+  merged over `HOST_ENGINE_DEFAULTS` (default `{}`), `TP_EMULATION` (default
+  `True`: shrink `SHARD_FIELDS` on one GPU; rbln `False`: boot real ranks, the
+  collectives are inside the compiled graph), `scheduler_output_cls()`
+  (default vLLM's `SchedulerOutput`; rbln `RBLNSchedulerOutput`),
+  `device_info()` for meta.yaml, `measure(run_forward, iterations,
+  catalog_slice)` (abstract; cuda `layerwise_profile`, rbln wall-clock between
+  device syncs) and `step_grid(args, limits)` (raises by default). `Platform.profile`
+  refuses a `PROFILE` that is not a `PlatformProfile`, and a step-granularity
+  platform whose class does not override `step_grid`. The base class imports
+  nothing heavy at module scope, so `platforms` still loads in the simulator
+  container. `python -m platforms.profile` checks both built-ins.
+- `devices/<hardware>.yaml`: one per device, named exactly as the cluster
+  config's `hardware` and the `profiler/perf/<hardware>/` folder. It holds
+  hardware facts only: `npu_mem` defaults (`mem_size`, `mem_bw`,
+  `mem_latency`) and `kv_cache_dtypes`. `platforms.load_device()` finds it
+  across vendors (built-ins first, installed entry points only on a miss, so
+  built-in hardware never imports a plugin); `resolve_npu_mem()` merges it
+  under the instance's `npu_mem` in `config_builder.py`, key by key; the
+  simulator and the profiler both refuse a `kv_cache_dtype` outside the list,
+  the profiler before booting. A device with no spec still works when the
+  cluster config states `npu_mem` in full. Power stays in the node's `power`
+  block. Do not add a spec value you have not measured without saying so in
+  the file: RBLN-CR03's `mem_bw` is a placeholder and says it is
+- `simulator.py`: `scheduler_class()`. cuda returns the in-tree port
+  (`serving/core/scheduler.py`); rbln returns `RBLNVllmScheduler`, a
+  `serving/core/vllm_scheduler.py::VllmScheduler` pinned to
+  `vllm_rbln.v1.core.rbln_scheduler.RBLNScheduler`.
+
+`load_platform(name, meta)` resolves, first hit wins: the explicit name
+(`--platform` on `python -m profiler` / `python -m serving`), the `platform`
+key of the perf bundle's meta.yaml (the profiler writes it, so a simulation
+run needs no flag), the sole installed non-cuda `llmservingsim.platforms`
+entry point, cuda. An entry point names a package with the same layout, so a
+vendor can ship its platform inside its own vLLM plugin.
+
+**Granularity.** `layer` is the CUDA default: per-kernel CSVs, a trace row
+per canonical layer, ASTRA-Sim adds the collectives. `step` is for a device
+that runs a compiled graph per padded shape: the profiler measures each
+forward whole into `tp<N>/step.csv` (same 4D key as attention), skips skew,
+boots every layer (no `num_hidden_layers=1`) and does not bump MNBT (see
+`config.mnbt_bumped`), and the trace generator emits one `step` row per
+iteration (`_synthesize_step_trace`) with no comm row. `_lookup_step` snaps
+the batch to the shapes the CSV holds before the kv-axis interpolation: a
+prefill chunk to the profiled chunk (the runner pads every prefill to
+`max_num_batched_tokens`), a decode batch up to the next profiled `n_decode`
+(the runner's buckets). The shapes are read off the CSV, so a denser profile
+needs no simulator change. Attention offloading is refused at step granularity
+because it hangs off per-layer rows. P/D works: a prefill instance's stage rows
+carry that stage's KV bytes in `comm_size`, and the patched Chakra converter
+(`scripts/patches/chakra-step-trace.patch`) emits the send and receive after a row
+whose name starts with `step` the way it does after `qkv_proj`.
+
+**vLLM-driven scheduler.** `VllmScheduler` does what `EngineCore` does on the
+host: `EngineArgs(...).create_engine_config()` from a tmpdir holding
+`configs/model/<model>.json`, `scheduler_config.get_scheduler_cls()`, a
+`KVCacheConfig` sized from the memory model's block count, then
+`schedule()` / `update_from_output()` around the simulated forward with a
+`ModelRunnerOutput` carrying one token per request that reached the end of
+what it has. It keeps the port's outward shape, so the main loop, DP barrier
+and trace generator are unchanged. `--scheduler vllm` selects it for any
+platform (needs vLLM importable; the CPU wheel is enough:
+`pip install vllm==0.24.0 --extra-index-url https://wheels.vllm.ai/0.24.0/cpu`).
+`python -m serving.core.vllm_scheduler` runs the port and it on the same
+ShareGPT requests: identical batches while nothing is preempted; under KV
+pressure vLLM's `BlockPool` keeps block 0 as the null block, so it has one
+usable block fewer and preempts one step earlier, and with that block
+returned the runs are identical. P/D follows vLLM's NIXL flow: a prefill
+instance runs each request with `max_tokens=1`, as vLLM's disaggregation proxy
+does, hands it on without recording a token (the proxy discards it), and a
+decode instance carries vLLM's `DecodeBenchConnector`, whose scheduler side
+reports every prompt token but the last as present. That is where NIXL leaves a
+decode request once its KV arrives (`_update_waiting_for_remote_kv` backs off
+one token on a full-prompt hit), so decode's first step computes one token and
+emits the first output token. NIXL's asynchronous wait for one more step is not
+modelled. Not modelled by it: `--prefix-storage`, a KV connector in vLLM that
+sits below the
+scheduler; the port models it directly. When a vLLM platform plugin is
+installed in the simulator environment its `check_and_update_config` runs
+too, so the run must carry the deployment's environment (for vllm-rbln:
+`VLLM_RBLN_USE_VLLM_MODEL=1`, else the plugin installs its optimum-path
+scheduler) and `--engine-kwargs` carries the knobs without a flag
+(`max_model_len`, ...).
+
+**Calibration knobs for a step bundle.** `--step-overhead-us` (every step)
+and `--prefill-step-overhead-us` (on top, for a step carrying a prefill
+chunk), also per instance in the cluster config, carry the host time the
+profiled `execute_model` does not include; fit them against a bench run
+after `mem_util` is matched to `num_gpu_blocks`. MiniMax-M2.5 tp4ep on
+RBLN-CR03 went from -7.3% / -3.9% (TTFT / TPOT mean) raw to +0.0% / +0.7%
+at 1100 / 9000 us; gpt-oss-120b tp1 needed 2200 / 7000 us (raw -11.0% /
+-31.7%), so the knobs are per deployment. The examples are
+`bench/examples/RBLN-CR03/{MiniMax-M2.5-tp4ep,gpt-oss-120b-tp1}`, which need
+vLLM + vllm-rbln importable to re-run and are therefore not in the default
+example lists. The gpt-oss config raises `npu_mem.mem_size` past the card
+because the memory model sizes MXFP4 weights at 8 bits (no 4-bit dtype), and
+the number is what holds vLLM's 227 blocks. `MiniMax-M2.5-pp4/` is ground
+truth only: per-rank wall-clocks inside `collective_rpc` do not measure a
+pipeline's latency (prefill came out 4x long, decode 4x short), so a pp step
+profile needs one forward timed from the host.
+
+**P/D over NIXL on RBLN, what the bring-up taught.** The example is
+`bench/examples/RBLN-CR03/Llama-3.2-1B-Instruct-pd`: TTFT / TPOT / latency mean
+-0.6% / +0.9% / +0.8% after calibration, from -50.8% / -19.7% / -22.9% raw. Fit
+each knob from the servers' own Prometheus metrics, not a blind grid: decode
+`step_overhead_us` from `inter_token_latency_seconds`, prefill
+`prefill_step_overhead_us` from the prefill server's `e2e_request_latency_seconds`
+against the bundle's prefill time, `link_bw` from `nixl_xfer_time_seconds` and
+`nixl_bytes_transferred`, and `link_latency` last, against TTFT, because it counts
+about three times (the link carries the output hand-off too). NIXL moves whole
+blocks once a request's prefill is done, so the vLLM-driven scheduler sends each
+request's KV on its final prefill step, rounded up to blocks. The client's first
+token comes from decode, so TTFT spans both servers plus the proxy.
+
+Facts that each cost a failed boot:
+- Device-to-device transfer (`kv_buffer_device: rbln`) needs `nixl-rbln`. The newest
+  build on pypi.rebellions.in (0.1.0.dev145) predates the `slices` field this
+  vllm-rbln reads, and calls `rebel._C.Context.global_key_at_device`, which
+  rebel-compiler 0.11.3.dev237 lacks. The field is on `rebellions-sw/nixl-rbln`'s
+  `dev` branch, which builds with meson against rebel-compiler and pins
+  `nixl<1.2`. Without `nixl-rbln` the connector falls back to upstream NIXL over UCX
+  on the host-bounce path, which is what the example ran.
+- NIXL 1.4.1's CUDA 13 build, which the `nixl` meta package picks on a host with no
+  CUDA, segfaults at exit here; 1.3.1, vLLM's own pin, does not.
+- Host-bounce allocates a host buffer the size of the KV cache and UCX pins it for
+  RDMA. A whole card's worth failed in `ibv_reg_mr` ("Cannot allocate memory");
+  size the cache to the workload with `num_gpu_blocks_override`.
+- The proxy is vLLM's `tests/v1/kv_connector/nixl_integration/toy_proxy_server.py`.
+  `python -m bench run` drives one engine, so a PD run needs a client that replays
+  the workload through the proxy and writes `requests.jsonl` in bench's shape.
+
+**RBLN facts that cost a boot each to learn.** vllm-rbln validates
+`block_size` against its `prefix_block_size` (2048), so the KV block must be
+a multiple of that (the CI perf target runs 8192; the profiler's default 16
+fails to compile with `tMM: Invalid output channel shape`). `kv_cache_dtype=fp8`
+needs the in-memory attention kernel, i.e. RBLN-CR13; CR03 runs a bf16 KV
+cache. vLLM's dummy weight loader draws from a torch Generator on the model
+device, which torch-rbln lacks, so the rbln platform's `ENGINE_KWARGS` load
+the real checkpoint and the profiler points vLLM at the model itself rather
+than the config-only tmpdir. A run needs the deployment's environment:
+`VLLM_RBLN_USE_VLLM_MODEL=1 VLLM_RBLN_DISABLE_OFFLOAD=1
+VLLM_ENGINE_READY_TIMEOUT_S=3600` and `RBLN_VISIBLE_DEVICES` for the
+ranks; `--engine-kwargs` carries `block_size`, `max_model_len`,
+`enable_expert_parallel`, `num_gpu_blocks_override`.
 
 ### Profiler (`profiler/`)
 The profiler uses vLLM's built-in `layerwise_profile()` via a worker extension class to
@@ -490,7 +653,11 @@ The simulator loads these via `get_config(model_name)` in `utils.py`.
 
 ### Cluster configs
 Cluster configs in `configs/cluster/` define hardware topology. Key instance fields:
-- `hardware`: must match a directory name in `profiler/perf/<hardware>/`
+- `hardware`: must match a directory name in `profiler/perf/<hardware>/`, and names
+  `platforms/<vendor>/devices/<hardware>.yaml` when one exists
+- `npu_mem`: optional when the device has a spec. Any of `mem_size`, `mem_bw`,
+  `mem_latency` stated here overrides the spec's value; state only what differs
+  for this deployment. A device without a spec needs all three
 - `model_name`: must match a config in `configs/model/{model_name}.json`
 - `num_npus`: total GPUs for the instance (optional, inferred from `tp_size * pp_size`)
 - `tp_size`: tensor parallel degree (required or inferred)
@@ -650,6 +817,8 @@ These must match the C++ enum in `astra-sim/astra-sim/system/AstraMemoryAPI.hh`.
   - Launched via `scripts/docker-sim.sh`
   - Mounts the repo root at `/app/LLMServingSim`; ASTRA-Sim + Chakra are
     built inside via `scripts/compile.sh` on first use
+  - `--scheduler vllm` and the `rbln` platform additionally need vLLM (CPU
+    wheel) and, for rbln, `vllm-rbln` importable inside it
 
 ## README and docs split
 
@@ -696,6 +865,11 @@ equality against recorded results:
    them in the same commit.
 3. For profiler changes: edit `MODEL` / `HARDWARE` in `profiler/profile.sh`
    and run `./profiler/profile.sh` from the repo root inside the vLLM container.
+4. `python -m serving.core.vllm_scheduler` checks the vLLM-driven scheduler
+   against the port (needs vLLM importable, no ASTRA-Sim).
+5. `python -m platforms` checks every built-in device spec, the `npu_mem` merge,
+   that every built-in platform exposes a `PlatformProfile`, and that the loader
+   refuses a step platform with no grid.
 
 A scenario whose clock equals an existing one exercises flag parsing and
 nothing else. Several knobs only bite once the KV cache is saturated, which is

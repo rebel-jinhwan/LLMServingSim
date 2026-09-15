@@ -39,12 +39,14 @@ Verbosity
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import shutil
 import sys
 from pathlib import Path
 
+from platforms import load_platform, supported_kv_cache_dtypes
 from profiler.core import logger as log
 from profiler.core.config import (
     ProfileArgs,
@@ -81,6 +83,21 @@ def _add_common_flags(p: argparse.ArgumentParser) -> None:
         required=True,
         help="Hardware identifier (e.g., H100, A6000). Becomes a "
              "folder name under perf/.",
+    )
+    p.add_argument(
+        "--platform",
+        default="cuda",
+        help="Platform plugin under platforms/ or an installed "
+             "llmservingsim.platforms entry point (cuda, rbln). "
+             "Default: cuda.",
+    )
+    p.add_argument(
+        "--engine-kwargs",
+        default=None,
+        help="JSON object of extra vllm.LLM kwargs merged last, for knobs "
+             "without a flag of their own, e.g. "
+             "'{\"block_size\": 8192, \"max_model_len\": 65536, "
+             "\"enable_expert_parallel\": true}'.",
     )
     p.add_argument(
         "--tp",
@@ -296,11 +313,14 @@ def _resolve_model(model: str, root: Path) -> tuple[Path, str]:
     return resolved, model
 
 
-def _parse_tp(tp_str: str) -> list[int]:
+def _parse_tp(tp_str: str, require_tp1: bool = True) -> list[int]:
     tps = [int(x.strip()) for x in tp_str.split(",") if x.strip()]
     if not tps:
         raise ValueError("--tp must contain at least one value")
-    if 1 not in tps:
+    if require_tp1 and 1 not in tps:
+        # tp_stable layers are profiled at tp=1 and replicated. A step
+        # profile has no such layers, and a model that needs several
+        # devices cannot be booted at tp=1 at all.
         raise ValueError("--tp must include 1")
     return tps
 
@@ -311,11 +331,20 @@ def _build_profile_args(
     architecture: str,
     model_config: dict,
 ) -> ProfileArgs:
+    # Refuse a KV dtype the device cannot run before an engine is booted for
+    # it: on RBLN-CR03 fp8 KV otherwise fails minutes in, at compile time.
+    kv = ns.kv_cache_dtype or "auto"
+    device_kv = supported_kv_cache_dtypes(ns.hardware)
+    if device_kv is not None and kv not in device_kv:
+        raise ValueError(
+            f"--kv-cache-dtype {kv} is not supported on {ns.hardware} (supports "
+            f"{device_kv}; see platforms/<vendor>/devices/{ns.hardware}.yaml)")
     return ProfileArgs(
         architecture=architecture,
         model=hf_id,
         hardware=ns.hardware,
-        tp_degrees=_parse_tp(ns.tp),
+        platform=ns.platform,
+        tp_degrees=_parse_tp(ns.tp, require_tp1=load_platform(ns.platform).granularity == "layer"),
         variant=ns.variant,
         dtype=ns.dtype,
         kv_cache_dtype=ns.kv_cache_dtype,
@@ -333,6 +362,7 @@ def _build_profile_args(
         only_skew=getattr(ns, "only_skew", False),
         force=getattr(ns, "force", False),
         hf_overrides=None,
+        engine_kwargs=json.loads(ns.engine_kwargs) if ns.engine_kwargs else None,
         model_config=model_config,
     )
 

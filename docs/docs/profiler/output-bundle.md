@@ -22,8 +22,14 @@ profiler/perf/<HARDWARE>/<MODEL>/<variant>/
     ├── attention.csv
     ├── moe.csv                   # MoE models only
     ├── skew.csv                  # skew-enabled runs only
-    └── skew_fit.csv              # skew-enabled runs only
+    ├── skew_fit.csv              # skew-enabled runs only
+    └── step.csv                  # step-granularity platforms only, instead of the above
 ```
+
+A bundle from a `step`-granularity platform (see
+**[Platforms](../simulator/platforms)**) holds only `step.csv` per TP
+folder: the whole forward's time per padded shape, with the same four
+key columns as `attention.csv`.
 
 `<variant>` is auto-named from the dtype combination
 (`bf16`, `bf16-kvfp8`, `fp8-kvfp8`, …): see
@@ -287,7 +293,8 @@ skew_fit:
 | Key | Meaning |
 | --- | --- |
 | `profiler_version` / `vllm_version` / `cuda_version` | Versions the bundle was produced with. Kernel timings shift a few percent across CUDA driver versions, so this is the field to check before trusting a mixed comparison |
-| `gpu` | The **driver's** device name, verbatim |
+| `gpu` | The **driver's** device name, verbatim (an NPU name for a non-CUDA platform) |
+| `platform` / `granularity` | Which `platforms/<vendor>` produced the bundle and whether it is per-`layer` or per-`step`. The simulator reads both: the first picks the scheduler, the second the trace shape |
 | `hardware` | The `--hardware` label, i.e. the folder name and the value a cluster config's `hardware` field must match. Distinct from `gpu` |
 | `architecture` / `architecture_sha256` | Which `profiler/models/*.yaml` was used, and its hash — so you can tell whether a catalog edit invalidates the bundle |
 | `model` / `variant` / `tp_degrees` | What was profiled |
