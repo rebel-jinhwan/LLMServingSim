@@ -131,6 +131,10 @@ scheduler.py → next iteration
 ## Code Style & Formatting
 
 - **Python**: 4-space indentation, snake_case for functions/variables, PascalCase for classes
+- **`pip install -e '.[dev]'`** is what a contributor needs: it pins `ruff`,
+  `mypy` and `pytest` in one place, and CI installs exactly the same thing.
+  `pre-commit install` then runs ruff and mypy before each commit, from that
+  install — `.pre-commit-config.yaml` pins nothing of its own
 - **`ruff format` is the formatter** — configured under `[tool.ruff]` in
   `pyproject.toml` (line length 100, target Python 3.10). Run `ruff format .`
   and `ruff check .` from the repo root before committing;
