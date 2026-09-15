@@ -46,7 +46,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from platforms import load_platform, supported_kv_cache_dtypes
+from platforms import load_device, load_platform
 from profiler.core import logger as log
 from profiler.core.config import (
     ProfileArgs,
@@ -336,11 +336,15 @@ def _build_profile_args(
     # Refuse a KV dtype the device cannot run before an engine is booted for
     # it: on RBLN-CR03 fp8 KV otherwise fails minutes in, at compile time.
     kv = ns.kv_cache_dtype or "auto"
-    device_kv = supported_kv_cache_dtypes(ns.hardware)
-    if device_kv is not None and kv not in device_kv:
+    device = load_device(ns.hardware)
+    if device is not None and not device.supports_kv_cache_dtype(kv):
         raise ValueError(
-            f"--kv-cache-dtype {kv} is not supported on {ns.hardware} (supports "
-            f"{device_kv}; see platforms/<vendor>/devices/{ns.hardware}.yaml)")
+            f"--kv-cache-dtype {kv} is not supported on {ns.hardware}: its device spec "
+            f"says support_fp8_kv: false ({device.source})")
+    if device is not None and ns.dtype == "fp8" and not device.support_fp8:
+        raise ValueError(
+            f"--dtype fp8 is not supported on {ns.hardware}: its device spec says "
+            f"support_fp8: false ({device.source})")
     return ProfileArgs(
         architecture=architecture,
         model=hf_id,

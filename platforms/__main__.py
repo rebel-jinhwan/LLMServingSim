@@ -43,13 +43,16 @@ def _check_builtin_devices() -> None:
         assert device.name == name, (name, device)
         assert device.platform in platforms.registry(), device
         assert set(device.npu_mem) == set(platforms.NPU_MEM_KEYS), device
-        assert device.kv_cache_dtypes, device
         assert device.source is not None and device.source.stem == name, device
         seen.append(name)
     assert seen, "no device specs found"
 
     rtx = platforms.load_device("RTX4090")
-    assert rtx.supports_kv_cache_dtype("fp8") and not rtx.supports_kv_cache_dtype("fp4")
+    assert rtx.support_fp8 is True and rtx.support_fp8_kv is True
+    assert rtx.supports_kv_cache_dtype("auto") and rtx.supports_kv_cache_dtype("fp8_e5m2")
+    assert not rtx.supports_kv_cache_dtype("int4")
+    assert platforms.DeviceSpec.support_fp8 is False, "the class default is no fp8"
+    assert platforms.DeviceSpec.support_fp8_kv is False
     # A deployment's npu_mem overrides the device's, key by key, and may add
     # mem_util, which is a deployment knob rather than a device fact.
     merged = platforms.resolve_npu_mem("RTX4090", {"mem_size": 20, "mem_util": 0.8})
@@ -57,8 +60,6 @@ def _check_builtin_devices() -> None:
     assert rtx.npu_mem_with(None) == dict(rtx.npu_mem)
     assert platforms.resolve_npu_mem("NO-SUCH-DEVICE", {"mem_size": 1}) == {"mem_size": 1}
     assert platforms.load_device("NO-SUCH-DEVICE") is None
-    assert platforms.supported_kv_cache_dtypes("RTX4090") == ["auto", "fp8"]
-    assert platforms.supported_kv_cache_dtypes("NO-SUCH-DEVICE") is None
     _check_device_validation()
     print(f"ok: {len(seen)} device specs ({', '.join(seen)}); npu_mem overrides merge key by key")
 
@@ -68,15 +69,16 @@ def _check_device_validation() -> None:
     from platforms.spec import DeviceSpec
 
     root = Path(tempfile.mkdtemp(prefix="device_spec_"))
+    ok = "mem_size: 1\nmem_bw: 1\nmem_latency: 0\n"
     cases = [
-        ("name: OTHER\nnpu_mem: {mem_size: 1, mem_bw: 1, mem_latency: 0}\n"
-         "kv_cache_dtypes: [auto]\n", "name must be"),
-        ("name: D1\nnpu_mem: {mem_size: 1, mem_bw: 1}\nkv_cache_dtypes: [auto]\n",
-         "missing"),
-        ("name: D1\nnpu_mem: {mem_size: 1, mem_bw: 1, mem_latency: 0, mem_util: 0.9}\n"
-         "kv_cache_dtypes: [auto]\n", "unknown keys"),
-        ("name: D1\nnpu_mem: {mem_size: 1, mem_bw: 1, mem_latency: 0}\n"
-         "kv_cache_dtypes: []\n", "non-empty"),
+        (f"name: OTHER\n{ok}", "name must be"),
+        ("name: D1\nmem_size: 1\nmem_bw: 1\n", "missing"),
+        ("name: D1\nmem_size: big\nmem_bw: 1\nmem_latency: 0\n", "must be a number"),
+        (f"name: D1\n{ok}mem_util: 0.9\n", "unknown keys"),
+        (f"name: D1\n{ok}kv_cache_dtypes: [auto]\n", "unknown keys"),
+        ("name: D1\nnpu_mem: {mem_size: 1, mem_bw: 1, mem_latency: 0}\n", "not under npu_mem"),
+        (f"name: D1\n{ok}support_fp8: yes please\n", "true or false"),
+        (f"name: D1\n{ok}support_fp8_kv: true\n", "support_fp8 is false"),
     ]
     for text, needle in cases:
         path = root / "D1.yaml"
@@ -93,7 +95,7 @@ def _check_plugins() -> None:
     root = Path(tempfile.mkdtemp(prefix="platform_plugin_"))
     (root / "devices").mkdir()
     (root / "devices" / "EXAMPLE-D1.yaml").write_text(
-        "name: EXAMPLE-D1\nnpu_mem: {mem_size: 32, mem_bw: 500, mem_latency: 0}\nkv_cache_dtypes: [auto]\n")
+        "name: EXAMPLE-D1\nmem_size: 32\nmem_bw: 500\nmem_latency: 0\n")
     (root / "perf" / "EXAMPLE-D1" / "org" / "model" / "bf16").mkdir(parents=True)
     (root / "configs" / "cluster").mkdir(parents=True)
     (root / "configs" / "cluster" / "example_one_node.json").write_text("{}\n")
@@ -140,8 +142,9 @@ def _check_plugins() -> None:
             assert needle in joined, (needle, warnings)
 
         device = platforms.load_device("EXAMPLE-D1")
-        assert device.platform == "example" and device.npu_mem["mem_size"] == 32, device
-        assert device.supports_kv_cache_dtype("auto"), device
+        assert device.platform == "example" and device.mem_size == 32, device
+        assert device.npu_mem == {"mem_size": 32, "mem_bw": 500, "mem_latency": 0}, device
+        assert device.supports_kv_cache_dtype("auto") and not device.supports_kv_cache_dtype("fp8"), device
         assert platforms.load_platform(hardware="EXAMPLE-D1").name == "example"
         assert root / "perf" in platforms.resource_dirs("perf")
         assert root / "configs" in platforms.resource_dirs("configs")

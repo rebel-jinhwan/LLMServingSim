@@ -179,34 +179,46 @@ from another platform in its code.
 ```yaml
 # platforms/cuda/devices/RTX4090.yaml
 name: RTX4090
-npu_mem:
-  mem_size: 24       # GB
-  mem_bw: 1008       # GB/s
-  mem_latency: 0     # ns
-kv_cache_dtypes: [auto, fp8]
+mem_size: 24         # GB
+mem_bw: 1008         # GB/s
+mem_latency: 0       # ns
+support_fp8: true      # fp8 weights
+support_fp8_kv: true   # an fp8 KV cache
 ```
 
 A spec holds hardware facts only, the ones every deployment of the device
-shares. Its `npu_mem` values are the defaults for any instance naming the
-device, and the instance's own `npu_mem` overrides them key by key, so a
-cluster config states only what differs for that deployment. Both the
-simulator and the profiler refuse a `kv_cache_dtype` outside
-`kv_cache_dtypes`, the profiler before an engine boots. A device with no
-spec keeps working when its cluster config states `npu_mem` in full.
+shares, stated flat. `mem_size`, `mem_bw` and `mem_latency` are the
+defaults for the `npu_mem` block of any instance naming the device, and the
+instance's own `npu_mem` overrides them key by key, so a cluster config
+states only what differs for that deployment. A device with no spec keeps
+working when its cluster config states `npu_mem` in full.
+
+Two booleans, both false by default, say what the device does with fp8:
+`support_fp8` for fp8 weights and `support_fp8_kv` for an fp8 KV cache in
+the attention kernel. They are separate on purpose, because they come
+apart: RBLN-CR03 runs MiniMax-M2.5's fp8 checkpoint but keeps a bf16 KV
+cache, the fp8 kernel being RBLN-CR13's. There is no list of KV dtypes to
+maintain. `auto` is the model's own dtype and always runs, and every
+`fp8*` variant vLLM accepts needs `support_fp8_kv`. Both the simulator and
+the profiler ask the spec before running, the profiler before an engine
+boots, and the profiler also refuses `--dtype fp8` where `support_fp8` is
+false.
 
 Every spec is validated when the registry is built, not when it is first
-used, so a mistake names its own file straight away. A `name` that does not
-match the filename, a missing `npu_mem` key, an empty `kv_cache_dtypes` and a
-device two platforms both claim are all refused. So is an unknown `npu_mem`
-key: `mem_util` scales one deployment's share of the card rather than
-describing the card, so it belongs in the cluster config, and silently
-ignoring it there would be worse than failing.
+used, so a mistake names its own file straight away. Refused: a `name` that
+does not match the filename, a missing or non-numeric memory field, a nested
+`npu_mem:` block (that shape belongs to the cluster config), a non-boolean
+flag, `support_fp8_kv` on a device without `support_fp8`, a device two
+platforms both claim, and any unknown key. The last one is the one that bites: `mem_util` scales one
+deployment's share of the card rather than describing the card, so it
+belongs in the cluster config, and silently ignoring it here would be worse
+than failing.
 
-| Device | Platform | `mem_size` | `mem_bw` | KV cache dtypes |
-| --- | --- | --- | --- | --- |
-| `RTX4090` | cuda | 24 | 1008 | auto, fp8 |
-| `RTXPRO6000` | cuda | 96 | 1597 | auto, fp8 |
-| `H100` | cuda | 80 | 3350 | auto, fp8 |
+| Device | Platform | `mem_size` | `mem_bw` | fp8 weights | fp8 KV |
+| --- | --- | --- | --- | --- | --- |
+| `RTX4090` | cuda | 24 | 1008 | yes | yes |
+| `RTXPRO6000` | cuda | 96 | 1597 | yes | yes |
+| `H100` | cuda | 80 | 3350 | yes | yes |
 
 An installed platform's devices join the same table: `load_device` searches
 every registered platform and reports which one owns the device, which is
@@ -222,7 +234,7 @@ and nothing but the entry point differs:
 ```
 <pkg>/__init__.py               class <Vendor>Platform(PlatformSpec)
 <pkg>/profile.py                class <Vendor>Profile(PlatformProfile)
-<pkg>/devices/<hardware>.yaml   npu_mem defaults, kv_cache_dtypes
+<pkg>/devices/<hardware>.yaml   memory facts, fp8 support
 <pkg>/perf/<hardware>/...       perf bundles the platform ships, optional
 <pkg>/configs/cluster/*.json    cluster configs, found by name, optional
 ```
