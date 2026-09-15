@@ -37,12 +37,13 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from platforms._registry import ENTRY_POINT_GROUP, ENV_VAR, registry, validate_spec
-from platforms.spec import GRANULARITIES, PlatformSpec
+from platforms.spec import GRANULARITIES, NPU_MEM_KEYS, DeviceSpec, PlatformSpec
 
 __all__ = [
-    "ENTRY_POINT_GROUP", "ENV_VAR", "GRANULARITIES", "PlatformSpec",
-    "detect_platform", "load_device", "load_platform", "registry",
-    "resolve_npu_mem", "resource_dirs", "supported_kv_cache_dtypes", "validate_spec",
+    "ENTRY_POINT_GROUP", "ENV_VAR", "GRANULARITIES", "NPU_MEM_KEYS", "DeviceSpec",
+    "PlatformSpec", "detect_platform", "devices", "load_device", "load_platform",
+    "registry", "resolve_npu_mem", "resource_dirs", "supported_kv_cache_dtypes",
+    "validate_spec",
 ]
 
 logger = logging.getLogger("llmservingsim.platforms")
@@ -73,7 +74,8 @@ def load_platform(name: str | None = None, meta: Mapping[str, Any] | None = None
     reg = registry()
     chosen = name or (meta or {}).get("platform") or os.environ.get(ENV_VAR)
     if chosen is None and hardware is not None:
-        chosen = (load_device(hardware) or {}).get("platform")
+        device = load_device(hardware)
+        chosen = device.platform if device else None
     if chosen is None and detect:
         spec = detect_platform()
         chosen = spec.name if spec is not None else None
@@ -92,36 +94,40 @@ def resource_dirs(kind: str) -> list[Path]:
 
 
 @functools.cache
-def load_device(hardware: str) -> dict[str, Any] | None:
-    """The spec for ``hardware`` from a platform's ``devices/<hardware>.yaml``,
-    with ``platform`` set to the platform that ships it, or None when no
-    platform describes that device (a cluster config then states ``npu_mem``
-    in full)."""
-    import yaml
+def devices() -> dict[str, DeviceSpec]:
+    """Every device any registered platform describes, by name.
 
-    found = [(spec.name, d / f"{hardware}.yaml") for spec in registry().values()
-             if (d := spec.resources("devices")) is not None and (d / f"{hardware}.yaml").is_file()]
-    if len(found) > 1:
-        raise ValueError(
-            f"device {hardware!r} is described by more than one platform: "
-            f"{[str(p) for _, p in found]}")
-    if not found:
-        return None
-    platform_name, path = found[0]
-    data = yaml.safe_load(path.read_text()) or {}
-    if data.get("name") != hardware:
-        raise ValueError(f"{path}: name must be {hardware!r}, got {data.get('name')!r}")
-    return {**data, "platform": platform_name}
+    Built once per process, so a device yaml that does not validate fails
+    here rather than at the point of use, and a device two platforms both
+    claim is caught once instead of per lookup.
+    """
+    found: dict[str, DeviceSpec] = {}
+    for spec in registry().values():
+        directory = spec.resources("devices")
+        for path in sorted(directory.glob("*.yaml")) if directory else []:
+            device = DeviceSpec.from_yaml(path, spec.name)
+            if device.name in found:
+                raise ValueError(
+                    f"device {device.name!r} is described by more than one platform: "
+                    f"{found[device.name].source} and {path}")
+            found[device.name] = device
+    return found
+
+
+def load_device(hardware: str) -> DeviceSpec | None:
+    """The spec for ``hardware``, or None when no platform describes it (a
+    cluster config then states ``npu_mem`` in full)."""
+    return devices().get(hardware)
 
 
 def resolve_npu_mem(hardware: str, given: Mapping[str, Any] | None) -> dict[str, Any]:
     """An instance's ``npu_mem``: the device spec's values, overridden by
     whatever the cluster config states."""
-    device = load_device(hardware) or {}
-    return {**(device.get("npu_mem") or {}), **(given or {})}
+    device = load_device(hardware)
+    return device.npu_mem_with(given) if device else dict(given or {})
 
 
 def supported_kv_cache_dtypes(hardware: str) -> list[str] | None:
     """The KV cache dtypes ``hardware`` can run, or None when unknown."""
     device = load_device(hardware)
-    return list(device["kv_cache_dtypes"]) if device and "kv_cache_dtypes" in device else None
+    return list(device.kv_cache_dtypes) if device else None

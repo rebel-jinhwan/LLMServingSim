@@ -34,27 +34,59 @@ class _EntryPoint:
 
 def _reset():
     _registry.registry.cache_clear()
-    platforms.load_device.cache_clear()
+    platforms.devices.cache_clear()
 
 
-def _check_builtin_devices() -> list[str]:
+def _check_builtin_devices() -> None:
     seen = []
-    for spec in platforms.registry().values():
-        devices = spec.resources("devices")
-        for path in sorted(devices.glob("*.yaml")) if devices else []:
-            device = platforms.load_device(path.stem)
-            assert device["platform"] == spec.name, (path, device["platform"])
-            assert set(device["npu_mem"]) == {"mem_size", "mem_bw", "mem_latency"}, path
-            assert device["kv_cache_dtypes"], path
-            seen.append(path.stem)
+    for name, device in platforms.devices().items():
+        assert device.name == name, (name, device)
+        assert device.platform in platforms.registry(), device
+        assert set(device.npu_mem) == set(platforms.NPU_MEM_KEYS), device
+        assert device.kv_cache_dtypes, device
+        assert device.source is not None and device.source.stem == name, device
+        seen.append(name)
     assert seen, "no device specs found"
+
+    rtx = platforms.load_device("RTX4090")
+    assert rtx.supports_kv_cache_dtype("fp8") and not rtx.supports_kv_cache_dtype("fp4")
+    # A deployment's npu_mem overrides the device's, key by key, and may add
+    # mem_util, which is a deployment knob rather than a device fact.
     merged = platforms.resolve_npu_mem("RTX4090", {"mem_size": 20, "mem_util": 0.8})
     assert merged == {"mem_size": 20, "mem_bw": 1008, "mem_latency": 0, "mem_util": 0.8}, merged
+    assert rtx.npu_mem_with(None) == dict(rtx.npu_mem)
     assert platforms.resolve_npu_mem("NO-SUCH-DEVICE", {"mem_size": 1}) == {"mem_size": 1}
     assert platforms.load_device("NO-SUCH-DEVICE") is None
     assert platforms.supported_kv_cache_dtypes("RTX4090") == ["auto", "fp8"]
     assert platforms.supported_kv_cache_dtypes("NO-SUCH-DEVICE") is None
-    return seen
+    _check_device_validation()
+    print(f"ok: {len(seen)} device specs ({', '.join(seen)}); npu_mem overrides merge key by key")
+
+
+def _check_device_validation() -> None:
+    """A device yaml that would be silently misread is refused instead."""
+    from platforms.spec import DeviceSpec
+
+    root = Path(tempfile.mkdtemp(prefix="device_spec_"))
+    cases = [
+        ("name: OTHER\nnpu_mem: {mem_size: 1, mem_bw: 1, mem_latency: 0}\n"
+         "kv_cache_dtypes: [auto]\n", "name must be"),
+        ("name: D1\nnpu_mem: {mem_size: 1, mem_bw: 1}\nkv_cache_dtypes: [auto]\n",
+         "missing"),
+        ("name: D1\nnpu_mem: {mem_size: 1, mem_bw: 1, mem_latency: 0, mem_util: 0.9}\n"
+         "kv_cache_dtypes: [auto]\n", "unknown keys"),
+        ("name: D1\nnpu_mem: {mem_size: 1, mem_bw: 1, mem_latency: 0}\n"
+         "kv_cache_dtypes: []\n", "non-empty"),
+    ]
+    for text, needle in cases:
+        path = root / "D1.yaml"
+        path.write_text(text)
+        try:
+            DeviceSpec.from_yaml(path, "example")
+        except ValueError as e:
+            assert needle in str(e), (needle, e)
+        else:
+            raise AssertionError(f"a device spec with {needle!r} was accepted: {text!r}")
 
 
 def _check_plugins() -> None:
@@ -110,7 +142,8 @@ def _check_plugins() -> None:
             assert needle in joined, (needle, warnings)
 
         device = platforms.load_device("EXAMPLE-D1")
-        assert device["platform"] == "example" and device["npu_mem"]["mem_size"] == 32, device
+        assert device.platform == "example" and device.npu_mem["mem_size"] == 32, device
+        assert device.supports_kv_cache_dtype("auto"), device
         assert platforms.load_platform(hardware="EXAMPLE-D1").name == "example"
         assert root / "perf" in platforms.resource_dirs("perf")
         assert root / "models" in platforms.resource_dirs("models")
@@ -165,8 +198,7 @@ def _check_plugins() -> None:
 
 
 def main() -> None:
-    seen = _check_builtin_devices()
-    print(f"ok: {len(seen)} device specs ({', '.join(seen)}); npu_mem overrides merge key by key")
+    _check_builtin_devices()
     _check_plugins()
     profile_selfcheck()
 

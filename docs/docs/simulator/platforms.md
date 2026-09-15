@@ -171,7 +171,10 @@ directly.
 
 A platform can describe the devices it runs on, one yaml per device in its
 `devices/` directory, named exactly as the cluster config's `hardware` and
-the `profiler/perf/<hardware>/` folder:
+the `profiler/perf/<hardware>/` folder. Each one is read into a `DeviceSpec`.
+A device is data rather than behaviour, so there is no subclass to write: a
+device differs from another device in its numbers, while a platform differs
+from another platform in its code.
 
 ```yaml
 # platforms/cuda/devices/RTX4090.yaml
@@ -190,6 +193,14 @@ cluster config states only what differs for that deployment. Both the
 simulator and the profiler refuse a `kv_cache_dtype` outside
 `kv_cache_dtypes`, the profiler before an engine boots. A device with no
 spec keeps working when its cluster config states `npu_mem` in full.
+
+Every spec is validated when the registry is built, not when it is first
+used, so a mistake names its own file straight away. A `name` that does not
+match the filename, a missing `npu_mem` key, an empty `kv_cache_dtypes` and a
+device two platforms both claim are all refused. So is an unknown `npu_mem`
+key: `mem_util` scales one deployment's share of the card rather than
+describing the card, so it belongs in the cluster config, and silently
+ignoring it there would be worse than failing.
 
 | Device | Platform | `mem_size` | `mem_bw` | KV cache dtypes |
 | --- | --- | --- | --- | --- |
