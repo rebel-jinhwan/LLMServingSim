@@ -5,7 +5,7 @@ Guidelines for AI coding agents (Claude Code, Cursor, Copilot, etc.) working in 
 ## Project Context
 
 LLMServingSim 2.0 is a cycle-level LLM serving simulator. It combines a Python frontend
-(`llmservingsim/serving/`, run as `python -m llmservingsim.serving`) with ASTRA-Sim (C++ analytical network simulator)
+(`llmservingsim/serving/`, run as `llmservingsim serving`) with ASTRA-Sim (C++ analytical network simulator)
 as the backend. The profiling pipeline (`llmservingsim/profiler/`) generates per-hardware latency data
 that drives the simulation, and the bench module (`llmservingsim/bench/`) runs vLLM end-to-end to
 validate the simulator against ground truth.
@@ -15,7 +15,7 @@ validate the simulator against ground truth.
 ```
 LLMServingSim/
 ├── llmservingsim/                       # The Python packages (`pip install -e .`)
-│   ├── serving/                         # Simulator (`python -m llmservingsim.serving`)
+│   ├── serving/                         # Simulator (`llmservingsim serving`)
 │   │   ├── __main__.py                  # Simulation entry point + main loop
 │   │   ├── core/                        # Internals
 │   │   │   ├── scheduler.py             # vLLM-style continuous batching scheduler
@@ -37,8 +37,8 @@ LLMServingSim/
 │   │   ├── validate.sh                  # every scenario vs recorded clocks + bench/examples digests
 │   │   └── validate-baselines.txt       # the recorded values; refresh with validate.sh --update
 │   ├── workloads/                       # ShareGPT/etc → JSONL workload generators
-│   │   └── generators/                  # `python -m llmservingsim.workloads.generators`
-│   ├── profiler/                        # vLLM-based layerwise profiler (`python -m llmservingsim.profiler`)
+│   │   └── generators/                  # `llmservingsim workloads`
+│   ├── profiler/                        # vLLM-based layerwise profiler (`llmservingsim profiler`)
 │   │   ├── __main__.py                  # CLI dispatch (profile / slice)
 │   │   ├── core/                        # internals
 │   │   │   ├── runner.py                # Orchestration (spin_up → categories → spin_down)
@@ -54,7 +54,7 @@ LLMServingSim/
 │   │   ├── v0/                          # Legacy (pre-rewrite) profiler, kept for reference
 │   │   ├── profile.sh                   # Editable user template (MODEL / HARDWARE / TP_DEGREES / …)
 │   │   └── profile-all.sh               # Helper: sweeps several MODELs × TP degrees
-    └── bench/                           # vLLM end-to-end benchmark + sim validation (`python -m llmservingsim.bench`)
+    └── bench/                           # vLLM end-to-end benchmark + sim validation (`llmservingsim bench`)
         ├── __main__.py                  # CLI dispatch (run / validate)
         ├── core/                        # internals
         │   ├── runner.py                # AsyncLLM driver, captures RequestStateStats
@@ -64,8 +64,8 @@ LLMServingSim/
         │   ├── plots.py                 # throughput / running-waiting / latency-CDF plot helpers
         │   └── logger.py                # Rich-based logger + stdio capture
         ├── results/                     # output: llmservingsim/bench/results/<run_id>/ (gitignored)
-        ├── bench.sh                     # host-side wrapper for `python -m llmservingsim.bench run`
-        └── validate.sh                  # host-side wrapper for `python -m llmservingsim.bench validate`
+        ├── bench.sh                     # host-side wrapper for `llmservingsim bench run`
+        └── validate.sh                  # host-side wrapper for `llmservingsim bench validate`
 ├── configs/
 │   ├── cluster/                         # Cluster topology configs (hardware, memory, instances)
 │   ├── model/                           # Model architecture configs (subset of HF config.json)
@@ -135,12 +135,14 @@ scheduler.py → next iteration
 - **Imports**: keep minimal and consistent; `llmservingsim/serving/` modules use relative imports
 - **`pip install -e .`** puts the packages on the import path as
   `llmservingsim.serving`, `llmservingsim.profiler`, `llmservingsim.bench` and
-  `llmservingsim.workloads`, so nothing needs a `PYTHONPATH` and every entry
-  point is `python -m llmservingsim.<pkg>`. Only code and the architecture
-  yamls live in the package; every bulk-data directory keeps its own name at the
-  repository root — `configs/`, `workloads/`, `profiler/{perf,power}/`,
-  `bench/examples/`, `astra-sim/`, `scripts/`, `docs/` and `outputs/`. Those
-  paths are therefore unchanged: the namespace move touched only the code
+  `llmservingsim.workloads`, and installs the `llmservingsim` console script.
+  Every entry point is `llmservingsim <serving|profiler|bench|workloads>`;
+  `python -m llmservingsim.<pkg>` runs the same program without installing.
+  Both containers install the checkout, so use the CLI form. Only code and the
+  architecture yamls live in the package; every bulk-data directory keeps its
+  own name at the repository root — `configs/`, `workloads/`,
+  `profiler/{perf,power}/`, `bench/examples/`, `astra-sim/`, `scripts/`,
+  `docs/` and `outputs/`
 - **Comments**: use English only — no Korean or other non-English text in comments, docstrings, or log messages
 
 ## Architecture Patterns
@@ -651,12 +653,12 @@ Memory location types: `LOCAL` (NPU) = 1, `REMOTE` (CPU) = 2, `CXL` = 3, `STORAG
 These must match the C++ enum in `astra-sim/astra-sim/system/AstraMemoryAPI.hh`.
 
 ### Docker environments
-- **vLLM container** (used by `python -m llmservingsim.profiler`, `python -m llmservingsim.bench`, and
-  `python -m llmservingsim.workloads.generators`): `vllm/vllm-openai:v0.19.0` (or
+- **vLLM container** (used by `llmservingsim profiler`, `llmservingsim bench`, and
+  `llmservingsim workloads`): `vllm/vllm-openai:v0.19.0` (or
   `v0.19.0-cu130` for CUDA 13.x)
   - Launched via `scripts/docker-vllm.sh`
   - Mounts the **LLMServingSim repo root** as `/workspace`; container cwd
-    is `/workspace`, so `python -m llmservingsim.profiler …` etc. work directly
+    is `/workspace`, so `llmservingsim profiler …` etc. work directly
   - Pre-installs `datasets` and `matplotlib` on first start (extra deps
     used by the workload generator and bench plots; vLLM brings the rest)
   - Set `HF_TOKEN` in `scripts/docker-vllm.sh` for gated-config auto-download

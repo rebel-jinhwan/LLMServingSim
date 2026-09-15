@@ -35,7 +35,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 
-cmd=(python -m llmservingsim.bench validate
+cmd=(llmservingsim bench validate
     --bench-dir "$BENCH_DIR"
     --sim-csv "$SIM_CSV"
     --sim-log "$SIM_LOG"

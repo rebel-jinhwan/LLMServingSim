@@ -11,7 +11,7 @@
 #     /workspace/configs/model/       HF model configs
 #
 # The working directory defaults to /workspace so any of the modules
-# can be run via ``python -m llmservingsim.profiler``, ``python -m llmservingsim.bench``, etc.
+# can be run via ``llmservingsim profiler``, ``llmservingsim bench``, etc.
 #
 # The official vllm/vllm-openai image already provides vllm, pydantic,
 # pyyaml, rich, and huggingface_hub — no extra pip installs required.
@@ -32,4 +32,4 @@ docker run --name vllm_docker \
   -w /workspace \
   --entrypoint /bin/bash \
   vllm/vllm-openai:v0.19.0 \
-  -c "pip install datasets matplotlib && exec bash"
+  -c "pip install datasets matplotlib && pip install -e . --no-deps && exec bash"

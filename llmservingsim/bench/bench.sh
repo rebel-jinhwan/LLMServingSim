@@ -3,7 +3,7 @@
 #
 # This is a thin host-side wrapper that:
 #   1. Resolves the repo root.
-#   2. Launches python -m llmservingsim.bench run inside the vLLM Docker container
+#   2. Launches llmservingsim bench run inside the vLLM Docker container
 #      (or the local uv venv from scripts/install-vllm.sh).
 #
 # Edit the variables below for your run, then execute:
@@ -55,7 +55,7 @@ EXPERT_PARALLEL="${EXPERT_PARALLEL:-0}"   # 1 to enable for MoE
 # =============================================================================
 mkdir -p "$OUTPUT_DIR"
 
-cmd=(python -m llmservingsim.bench run
+cmd=(llmservingsim bench run
     --model "$MODEL"
     --dataset "$DATASET"
     --output-dir "$OUTPUT_DIR"

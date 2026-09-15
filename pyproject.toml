@@ -18,6 +18,9 @@ dependencies = [
     "huggingface_hub",  # config auto-fetch on a profiler cache miss
 ]
 
+[project.scripts]
+llmservingsim = "llmservingsim.__main__:main"
+
 [project.urls]
 Homepage = "https://llmservingsim.ai"
 Source = "https://github.com/casys-kaist/LLMServingSim"

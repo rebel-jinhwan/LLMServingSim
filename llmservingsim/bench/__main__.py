@@ -1,4 +1,4 @@
-"""CLI dispatch: ``python -m llmservingsim.bench {run,validate} ...``"""
+"""CLI dispatch: ``llmservingsim bench {run,validate} ...``"""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import sys
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(prog="bench")
+    parser = argparse.ArgumentParser(prog="llmservingsim bench")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_run = sub.add_parser("run", help="Run a vLLM benchmark and record results")

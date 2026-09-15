@@ -7,7 +7,7 @@ latency. Output CSVs feed the simulator's trace generator.
 ## Directory layout
 
 ```
-profiler/                     Python package — `python -m llmservingsim.profiler ...`
+profiler/                     Python package — `llmservingsim profiler ...`
   __init__.py                 package marker + _typeshed shim for vLLM
   __main__.py                 CLI entry (profile / slice subcommands)
   core/                       internals
@@ -62,7 +62,7 @@ etc.) can be fetched automatically on first run.
 
 The script is a template — open it, change `MODEL` and `HARDWARE`, and
 optionally tweak the rest. Every knob below maps to a CLI flag on
-`python -m llmservingsim.profiler profile`; shell variables left unset stay at the
+`llmservingsim profiler profile`; shell variables left unset stay at the
 profiler's built-in defaults.
 
 #### Required
@@ -207,7 +207,7 @@ the CLI selects a matching model.
 
 ### Sweeping several models: `profiler/profile-all.sh`
 
-Helper template that wraps `python -m llmservingsim.profiler profile` in a loop over
+Helper template that wraps `llmservingsim profiler profile` in a loop over
 a few canned models. Current list: `Qwen/Qwen3-32B`,
 `Qwen/Qwen3-30B-A3B-Instruct-2507`, `meta-llama/Llama-3.1-8B` — each
 profiled at TP=1 and TP=2 on the same hardware. Useful for bringing
@@ -476,7 +476,7 @@ to exist for the shape you want to measure.
 ```
 
 Set via `VERBOSITY="--silent"` / `"--verbose"` in `profiler/profile.sh`,
-or pass `--log-level X` to `python -m llmservingsim.profiler profile` directly.
+or pass `--log-level X` to `llmservingsim profiler profile` directly.
 
 ## Slice-refresh (partial re-profile)
 
@@ -484,7 +484,7 @@ After the first full sweep, iterate on one category (e.g., tune the
 attention grid) without redoing everything:
 
 ```bash
-python -m llmservingsim.profiler slice meta-llama/Llama-3.1-8B \
+llmservingsim profiler slice meta-llama/Llama-3.1-8B \
     --hardware RTXPRO6000 --tp-refresh 1 --group attention
 ```
 

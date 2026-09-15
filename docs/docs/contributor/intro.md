@@ -86,7 +86,7 @@ The fastest "is everything working?" check is the bundled
 single-instance trace:
 
 ```bash
-python -m llmservingsim.serving \
+llmservingsim serving \
     --cluster-config configs/cluster/single_node_single_instance.json \
     --dataset workloads/example_trace.jsonl \
     --output outputs/onboarding_smoke.csv \

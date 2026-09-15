@@ -111,7 +111,7 @@ devices in roughly equal chunks, while keeping KV cache on NPU.
 ## Run
 
 ```bash
-python -m llmservingsim.serving \
+llmservingsim serving \
   --cluster-config 'configs/cluster/single_node_cxl_instance.json' \
   --dtype bfloat16 --block-size 16 \
   --dataset 'workloads/example_trace.jsonl' \

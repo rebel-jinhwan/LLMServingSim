@@ -118,13 +118,19 @@ Outside the container, do it once in your environment:
 pip install -e .
 ```
 
-Nothing is copied: the packages keep running from the checkout, so `python -m
-llmservingsim.serving` works from any working directory without a `PYTHONPATH`.
+Nothing is copied: the packages keep running from the checkout, and you get the
+`llmservingsim` command:
+
+```bash
+llmservingsim serving --help      # also: profiler, bench, workloads
+```
+
+`python -m llmservingsim.serving` runs the same program without installing.
 
 Then run the bundled smoke test from inside the simulator container:
 
 ```bash
-python -m llmservingsim.serving \
+llmservingsim serving \
   --cluster-config 'configs/cluster/single_node_single_instance.json' \
   --dtype bfloat16 --block-size 16 \
   --dataset 'workloads/example_trace.jsonl' \

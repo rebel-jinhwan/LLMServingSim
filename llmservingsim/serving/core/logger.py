@@ -73,7 +73,7 @@ _THEME = Theme(
         "ok": "green bold",
     }
 )
-# One console for everything. Stdout so ``python -m llmservingsim.serving ... > out.log``
+# One console for everything. Stdout so ``llmservingsim serving ... > out.log``
 # captures logs with a single ``>`` (no ``2>&1``). ASTRA-Sim IPC in
 # controller.py uses the subprocess's own pipes, not the parent's
 # stdout, so this is safe.

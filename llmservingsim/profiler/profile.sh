@@ -112,7 +112,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
 # Build the python command with only the flags that are set.
-cmd=(python -m llmservingsim.profiler profile "$MODEL" --hardware "$HARDWARE")
+cmd=(llmservingsim profiler profile "$MODEL" --hardware "$HARDWARE")
 
 [[ -n "${TP_DEGREES:-}" ]]             && cmd+=(--tp "$TP_DEGREES")
 [[ -n "${DTYPE:-}" ]]                  && cmd+=(--dtype "$DTYPE")

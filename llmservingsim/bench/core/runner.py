@@ -1,7 +1,7 @@
 """vLLM benchmark runner — strict replay of an existing dataset.
 
 The runner reads a LLMServingSim-format JSONL workload (the same format
-``python -m llmservingsim.workloads.generators sharegpt`` produces and ``python -m llmservingsim.serving
+``llmservingsim workloads sharegpt`` produces and ``llmservingsim serving
 --dataset`` consumes) and replays every request through vLLM with its
 ``input_tok_ids`` and ``output_toks`` pinned, so the run is bit-for-bit
 comparable to the simulator's view of the same workload.
@@ -39,7 +39,7 @@ def register_args(p: argparse.ArgumentParser) -> None:
                    help="HF model id passed verbatim to vllm.AsyncLLM.")
     p.add_argument("--dataset", required=True,
                    help="Path to a LLMServingSim-format JSONL workload "
-                        "(produced by `python -m llmservingsim.workloads.generators`).")
+                        "(produced by `llmservingsim workloads`).")
     p.add_argument("--output-dir", required=True, dest="output_dir",
                    help="Output directory for this run "
                         "(meta.json/requests.jsonl/timeseries.csv).")
@@ -126,7 +126,7 @@ def _load_dataset(path: Path, cap: int = 0) -> list[dict]:
             if "input_tok_ids" not in row or not row["input_tok_ids"]:
                 raise ValueError(
                     f"Row missing input_tok_ids in {path}; regenerate the "
-                    f"dataset with `python -m llmservingsim.workloads.generators`."
+                    f"dataset with `llmservingsim workloads`."
                 )
             requests.append(row)
             if cap and len(requests) >= cap:

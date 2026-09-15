@@ -10,9 +10,15 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
 
 ### Added
 - `pyproject.toml`, so `pip install -e .` puts the packages on the import path
-  and nothing needs a `PYTHONPATH`. `scripts/docker-sim.sh` installs the
-  checkout the same way, with `--no-deps` since that image's versions are
-  pinned.
+  and nothing needs a `PYTHONPATH`. Both `scripts/docker-sim.sh` and
+  `scripts/docker-vllm.sh` install the checkout the same way, with `--no-deps`
+  since those images' versions are pinned.
+- **An `llmservingsim` console script.** `llmservingsim serving`,
+  `llmservingsim profiler`, `llmservingsim bench` and `llmservingsim workloads`
+  are the documented entry points now; each one runs the subpackage's own
+  `__main__`, so `python -m llmservingsim.<pkg>` is the same program and still
+  works without installing (the validation scripts use that form, through
+  `$PYTHON`).
 - `docs/scripts/check-rendered.mjs` — scans the built site for source syntax that
   survived into visible text (unparsed admonitions, bold, links, headings, table rows,
   doubled list markers, visible HTML comments, JSX brace leaks), plus a structural
@@ -69,8 +75,8 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
 - **The Python packages moved under an `llmservingsim/` namespace.** `serving/`,
   `profiler/`, `bench/` and `workloads/` are now
   `llmservingsim/{serving,profiler,bench,workloads}/`, and every entry point
-  follows: `python -m llmservingsim.serving`, `python -m llmservingsim.profiler`,
-  `python -m llmservingsim.bench`, `python -m llmservingsim.workloads.generators`.
+  follows: `llmservingsim serving`, `llmservingsim profiler`,
+  `llmservingsim bench`, `llmservingsim workloads`.
   The top-level directory names were the package names, which is what made them
   too generic to publish. **Only code and the architecture yamls moved in.**
   Every bulk-data directory keeps its own name at the repository root —

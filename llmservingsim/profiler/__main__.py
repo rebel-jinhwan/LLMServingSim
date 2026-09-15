@@ -1,4 +1,4 @@
-"""CLI entry point: ``python -m llmservingsim.profiler ...``.
+"""CLI entry point: ``llmservingsim profiler ...``.
 
 Two subcommands:
 
@@ -343,7 +343,7 @@ def _build_profile_args(
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="python -m llmservingsim.profiler",
+        prog="llmservingsim profiler",
         description="Layerwise profiler for LLMServingSim.",
     )
     sub = p.add_subparsers(dest="cmd", required=True)
