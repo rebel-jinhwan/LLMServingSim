@@ -28,11 +28,19 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
 
 ### Added
 - `platforms/spec.py::DeviceSpec` — a device is now a validated object rather
-  than a dict parsed at the point of use. `platforms.devices()` builds every
-  registered platform's `devices/*.yaml` once per process, so a bad spec names
-  its own file at discovery: a `name` that does not match the filename, a
-  missing or unknown `npu_mem` key (`mem_util` scales a deployment, not a card,
-  and used to be ignored silently), an empty `kv_cache_dtypes`, or a device two
+  than a dict parsed at the point of use, and its yaml is flat: `mem_size`,
+  `mem_bw`, `mem_latency`, `support_fp8` and `support_fp8_kv` at top level
+  (the nested `npu_mem:` block is the cluster config's shape, which these
+  values default). The two fp8 flags replace a list of KV dtypes: `auto` is
+  the model's dtype and always runs, every `fp8*` KV variant needs
+  `support_fp8_kv`, and the flags are separate because RBLN-CR03 runs an fp8
+  checkpoint with a bf16 KV cache. The profiler refuses `--dtype fp8` and an
+  fp8 KV cache on a device that says false, before an engine boots.
+  `platforms.devices()` builds every registered platform's specs once per
+  process, so a bad one names its own file at discovery: a `name` that does
+  not match the filename, a missing or non-numeric memory field, an unknown
+  key (`mem_util` scales a deployment, not a card, and used to be ignored
+  silently), a non-boolean flag, fp8 KV without fp8 support, or a device two
   platforms both claim.
 - Out-of-tree platforms. A platform is now a
   `platforms/spec.py::PlatformSpec` subclass carrying `name`,

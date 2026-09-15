@@ -34,8 +34,9 @@ if TYPE_CHECKING:
 GRANULARITIES = ("layer", "step")
 
 NPU_MEM_KEYS = ("mem_size", "mem_bw", "mem_latency")
-"""The device facts a spec states. ``mem_util`` is deliberately not one: it
-scales a deployment's share of the card, not the card."""
+"""The memory facts a device spec states, and the keys of a cluster config's
+``npu_mem`` they default. ``mem_util`` is deliberately not one: it scales a
+deployment's share of the card, not the card."""
 
 
 class PlatformSpec:
@@ -146,10 +147,20 @@ class DeviceSpec:
     name: str
     platform: str
     """The platform that ships this device; how `hardware` resolves a platform."""
-    npu_mem: Mapping[str, Any]
-    """Defaults for an instance's ``npu_mem``: every key of ``NPU_MEM_KEYS``."""
-    kv_cache_dtypes: tuple[str, ...]
-    """What the device's attention kernels can actually run."""
+    mem_size: float
+    """Device memory, GB."""
+    mem_bw: float
+    """Device memory bandwidth, GB/s."""
+    mem_latency: float
+    """Device memory latency, ns."""
+    support_fp8: bool = False
+    """Whether the device runs fp8 weights (an ``fp8`` variant)."""
+    support_fp8_kv: bool = False
+    """Whether the device's attention kernel reads an fp8 KV cache. Separate
+    from ``support_fp8`` because they come apart in practice: RBLN-CR03 runs
+    MiniMax-M2.5's fp8 checkpoint but keeps a bf16 KV cache, the fp8 kernel
+    being RBLN-CR13's. A KV dtype of ``auto`` is the model's dtype and needs
+    no flag at all."""
     source: Path | None = None
     """The yaml this came from, so an error can name the file to fix."""
 
@@ -164,25 +175,45 @@ class DeviceSpec:
         if data.get("name") != path.stem:
             raise ValueError(f"{path}: name must be {path.stem!r}, got {data.get('name')!r}")
 
-        npu_mem = data.get("npu_mem") or {}
-        missing = [k for k in NPU_MEM_KEYS if k not in npu_mem]
+        if "npu_mem" in data:
+            raise ValueError(
+                f"{path}: a device spec states mem_size, mem_bw and mem_latency at top "
+                f"level, not under npu_mem (that block is the cluster config's)")
+        missing = [k for k in NPU_MEM_KEYS if k not in data]
         if missing:
-            raise ValueError(f"{path}: npu_mem is missing {missing}")
+            raise ValueError(f"{path}: missing {missing}")
+        for key in NPU_MEM_KEYS:
+            if isinstance(data[key], bool) or not isinstance(data[key], (int, float)):
+                raise ValueError(f"{path}: {key} must be a number, got {data[key]!r}")
         # An unknown key is a typo or a deployment knob in the wrong file;
         # either way it would be silently ignored, so refuse it.
-        unknown = sorted(set(npu_mem) - set(NPU_MEM_KEYS))
+        known = {"name", *NPU_MEM_KEYS, "support_fp8", "support_fp8_kv"}
+        unknown = sorted(set(data) - known)
         if unknown:
             raise ValueError(
-                f"{path}: npu_mem has unknown keys {unknown}; a device spec states "
-                f"{list(NPU_MEM_KEYS)} only, and a deployment states the rest in its "
-                f"cluster config")
+                f"{path}: unknown keys {unknown}; a device spec states {sorted(known)} "
+                f"only, and a deployment states the rest (mem_util, ...) in its cluster "
+                f"config")
 
-        dtypes = data.get("kv_cache_dtypes")
-        if not dtypes or not all(isinstance(d, str) for d in dtypes):
-            raise ValueError(f"{path}: kv_cache_dtypes must be a non-empty list of strings")
+        flags = {}
+        for key in ("support_fp8", "support_fp8_kv"):
+            flags[key] = data.get(key, False)
+            if not isinstance(flags[key], bool):
+                raise ValueError(f"{path}: {key} must be true or false, got {flags[key]!r}")
+        if flags["support_fp8_kv"] and not flags["support_fp8"]:
+            # An fp8 KV cache is fp8 arithmetic in the attention kernel; a
+            # device that does not do fp8 at all cannot have one.
+            raise ValueError(f"{path}: support_fp8_kv is true but support_fp8 is false")
 
-        return cls(name=data["name"], platform=platform, npu_mem=dict(npu_mem),
-                   kv_cache_dtypes=tuple(dtypes), source=path)
+        return cls(name=data["name"], platform=platform,
+                   mem_size=data["mem_size"], mem_bw=data["mem_bw"], mem_latency=data["mem_latency"],
+                   source=path, **flags)
+
+    @property
+    def npu_mem(self) -> dict[str, Any]:
+        """The device's memory facts in the shape of a cluster config's
+        ``npu_mem`` block, which they default."""
+        return {k: getattr(self, k) for k in NPU_MEM_KEYS}
 
     def npu_mem_with(self, given: Mapping[str, Any] | None) -> dict[str, Any]:
         """This device's defaults, overridden key by key by one deployment's
@@ -190,8 +221,15 @@ class DeviceSpec:
         return {**self.npu_mem, **(given or {})}
 
     def supports_kv_cache_dtype(self, dtype: str) -> bool:
-        return dtype in self.kv_cache_dtypes
+        """``auto`` is the model's own dtype and always runs; every fp8 variant
+        vLLM accepts (``fp8``, ``fp8_e4m3``, ``fp8_e5m2``, ...) needs the fp8
+        attention kernel; nothing else is a KV dtype the simulator models."""
+        if dtype == "auto":
+            return True
+        if dtype.startswith("fp8"):
+            return self.support_fp8_kv
+        return False
 
     def __repr__(self) -> str:
         return (f"DeviceSpec(name={self.name!r}, platform={self.platform!r}, "
-                f"kv_cache_dtypes={list(self.kv_cache_dtypes)})")
+                f"support_fp8={self.support_fp8}, support_fp8_kv={self.support_fp8_kv})")

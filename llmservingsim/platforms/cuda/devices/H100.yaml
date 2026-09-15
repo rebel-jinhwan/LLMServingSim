@@ -1,8 +1,8 @@
 # NVIDIA H100 80GB. Hardware facts every cluster config naming this device
 # shares; an instance's npu_mem overrides any of them.
 name: H100
-npu_mem:
-  mem_size: 80       # GB
-  mem_bw: 3350       # GB/s
-  mem_latency: 0     # ns
-kv_cache_dtypes: [auto, fp8]
+mem_size: 80       # GB
+mem_bw: 3350       # GB/s
+mem_latency: 0     # ns
+support_fp8: true      # fp8 tensor cores
+support_fp8_kv: true   # and an fp8 KV cache in the attention kernel

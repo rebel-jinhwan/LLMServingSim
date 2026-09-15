@@ -16,7 +16,7 @@ Layout of a platform package, in tree or in its own distribution::
 
     <pkg>/__init__.py              class <Vendor>Platform(PlatformSpec)
     <pkg>/profile.py               class <Vendor>Profile(PlatformProfile)
-    <pkg>/devices/<hardware>.yaml  npu_mem defaults, kv_cache_dtypes
+    <pkg>/devices/<hardware>.yaml  memory facts, fp8 support
     <pkg>/perf/<hardware>/...      step or layer perf bundles (optional)
 
 ``load_platform`` resolves, first hit wins: the explicit name, the perf
@@ -41,8 +41,7 @@ from platforms.spec import GRANULARITIES, NPU_MEM_KEYS, DeviceSpec, PlatformSpec
 __all__ = [
     "ENTRY_POINT_GROUP", "ENV_VAR", "GRANULARITIES", "NPU_MEM_KEYS", "DeviceSpec",
     "PlatformSpec", "detect_platform", "devices", "load_device", "load_platform",
-    "registry", "resolve_npu_mem", "resource_dirs", "supported_kv_cache_dtypes",
-    "validate_spec",
+    "registry", "resolve_npu_mem", "resource_dirs", "validate_spec",
 ]
 
 logger = logging.getLogger("llmservingsim.platforms")
@@ -125,8 +124,3 @@ def resolve_npu_mem(hardware: str, given: Mapping[str, Any] | None) -> dict[str,
     device = load_device(hardware)
     return device.npu_mem_with(given) if device else dict(given or {})
 
-
-def supported_kv_cache_dtypes(hardware: str) -> list[str] | None:
-    """The KV cache dtypes ``hardware`` can run, or None when unknown."""
-    device = load_device(hardware)
-    return list(device.kv_cache_dtypes) if device else None

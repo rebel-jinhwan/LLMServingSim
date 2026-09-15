@@ -38,7 +38,7 @@ LLMServingSim/
 │   └── validate-baselines.txt  # the recorded values; refresh with validate.sh --update
 ├── platforms/                  # Platform plugins: how a vLLM hardware platform differs from CUDA
 │   ├── spec.py                 # PlatformSpec (name, granularity, profile_cls, bind_scheduler)
-│   │                           # and DeviceSpec (npu_mem defaults, kv_cache_dtypes)
+│   │                           # and DeviceSpec (memory facts, fp8 support)
 │   ├── _registry.py            # built-ins by package scan + `llmservingsim.platforms` entry points
 │   ├── __init__.py             # load_platform(), load_device(), resolve_npu_mem(), resource_dirs()
 │   ├── profile.py              # PlatformProfile: the profiler-side interface, CUDA defaults
@@ -167,12 +167,22 @@ per platform, in tree or out, and one registry holding both.
   platform's `devices/<hardware>.yaml`. A device is **data, not behaviour**:
   a device differs from another device in its numbers, while a platform
   differs from another platform in its code, so there is one yaml per device
-  and no subclass. It holds hardware facts only: `npu_mem` defaults
-  (`NPU_MEM_KEYS`: `mem_size`, `mem_bw`, `mem_latency`) and
-  `kv_cache_dtypes`. `DeviceSpec.from_yaml()` refuses a name that does not
-  match the filename, a missing `npu_mem` key, an unknown one (`mem_util`
-  belongs to a deployment, not a device, and would otherwise be silently
-  ignored) and an empty `kv_cache_dtypes`. `platforms.devices()` builds them
+  and no subclass. It holds hardware facts only, flat: `mem_size`, `mem_bw`,
+  `mem_latency` (`NPU_MEM_KEYS`, the keys of a cluster config's `npu_mem`
+  block they default, exposed together as `device.npu_mem`), and two
+  booleans, both default false: `support_fp8` (fp8 weights) and
+  `support_fp8_kv` (an fp8 KV cache in the attention kernel). They are two
+  flags because they come apart in practice: RBLN-CR03 runs an fp8
+  checkpoint with a bf16 KV cache. There is no list of KV dtypes: `auto` is
+  the model's dtype and always runs, every `fp8*` variant needs
+  `support_fp8_kv`, and `device.supports_kv_cache_dtype()` is what the
+  simulator and the profiler ask, the profiler before booting, which also
+  refuses `--dtype fp8` where `support_fp8` is false. `DeviceSpec.from_yaml()`
+  refuses a name that does not match the filename, a missing or non-numeric
+  memory field, a nested `npu_mem:` block (that shape is the cluster
+  config's), an unknown key (`mem_util` belongs to a deployment, not a device,
+  and would otherwise be silently ignored), a non-boolean flag, and
+  `support_fp8_kv` without `support_fp8`. `platforms.devices()` builds them
   all once per process, so a bad yaml or a device two platforms both claim
   fails at discovery rather than at the point of use;
   `platforms.load_device()` looks one up and reports the owning platform, so
@@ -647,8 +657,9 @@ Cluster configs in `configs/cluster/` define hardware topology. Key instance fie
 - `hardware`: must match a directory name in `profiler/perf/<hardware>/`, and names
   `platforms/<vendor>/devices/<hardware>.yaml` when one exists
 - `npu_mem`: optional when the device has a spec. Any of `mem_size`, `mem_bw`,
-  `mem_latency` stated here overrides the spec's value; state only what differs
-  for this deployment. A device without a spec needs all three
+  `mem_latency` stated here overrides the spec's top-level value of the same
+  name; state only what differs for this deployment. A device without a spec
+  needs all three
 - `model_name`: must match a config in `configs/model/{model_name}.json`
 - `num_npus`: total GPUs for the instance (optional, inferred from `tp_size * pp_size`)
 - `tp_size`: tensor parallel degree (required or inferred)
