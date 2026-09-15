@@ -18,6 +18,7 @@ Layout of a platform package, in tree or in its own distribution::
     <pkg>/profile.py               class <Vendor>Profile(PlatformProfile)
     <pkg>/devices/<hardware>.yaml  memory facts, fp8 support
     <pkg>/perf/<hardware>/...      step or layer perf bundles (optional)
+    <pkg>/cluster/<name>.json      cluster configs, found by bare name (optional)
 
 ``load_platform`` resolves, first hit wins: the explicit name, the perf
 bundle's recorded ``platform``, ``$LLMSERVINGSIM_PLATFORM``, the platform

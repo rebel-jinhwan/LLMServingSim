@@ -322,7 +322,7 @@ def resolve_cluster_config(path):
     A path is a location: absolute as it stands, relative to the repo root
     otherwise (the simulator runs from astra-sim/, hence the ../). A bare
     name is a lookup: the in-tree configs/cluster/ first, then each
-    registered platform's configs/cluster/. A platform can therefore ship
+    registered platform's cluster/. A platform can therefore ship
     the deployments it was calibrated for, the way it ships its devices/
     and perf/, and a run names the config without knowing which
     package holds it.
@@ -340,7 +340,7 @@ def resolve_cluster_config(path):
     if not os.path.dirname(path):
         candidates.append(os.path.join('..', 'configs', 'cluster', path))
         from platforms import resource_dirs
-        candidates += [str(d / 'cluster' / path) for d in resource_dirs('configs')]
+        candidates += [str(d / path) for d in resource_dirs('cluster')]
     for candidate in candidates:
         if os.path.isfile(candidate):
             return candidate

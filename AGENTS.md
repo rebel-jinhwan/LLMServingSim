@@ -195,7 +195,7 @@ per platform, in tree or out, and one registry holding both.
   add a spec value you have not measured without saying so in the file.
 - `resource_dirs(kind)` is how anything a platform ships as files is found:
   `devices/`, `perf/<hardware>/<model>/<variant>/` bundles,
-  and `configs/cluster/<name>.json`, each searched after the in-tree
+  and `cluster/<name>.json`, each searched after the in-tree
   locations by `trace_generator._variant_root()` and
   `config_builder.resolve_cluster_config()`. An out-of-tree platform
   therefore needs no change to LLMServingSim to ship its own devices,
@@ -693,7 +693,7 @@ TP and EP share the same GPUs: non-MoE layers use TP (ALLREDUCE), MoE layers use
 `--cluster-config` is resolved by `config_builder.resolve_cluster_config()`.
 A **path** is a location: absolute as it stands, relative to the repo root
 otherwise. A **bare name** is a lookup: the in-tree `configs/cluster/` first,
-then each registered platform's `configs/cluster/`, so a platform ships the
+then each registered platform's `cluster/`, so a platform ships the
 deployments it was calibrated for and a run names one without knowing which
 package holds it. The two are kept apart on purpose -- a path naming a
 directory is never searched for by basename, so a mistyped directory fails
