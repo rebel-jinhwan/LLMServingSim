@@ -25,7 +25,14 @@ Source = "https://github.com/casys-kaist/LLMServingSim"
 [project.optional-dependencies]
 # The profiler and bench need vLLM and its stack, which is installed per
 # environment (scripts/install-vllm.sh, or the container image).
-dev = ["pytest"]
+#
+# ruff is pinned here and nowhere else: CI and a local checkout both get it
+# from `pip install -e '.[dev]'`, so a bump is one edit, in the commit that also
+# carries whatever reformatting it wants.
+dev = [
+    "pytest",
+    "ruff==0.16.7",
+]
 
 [tool.setuptools.packages.find]
 include = ["llmservingsim*"]
@@ -38,3 +45,63 @@ exclude = ["llmservingsim.profiler.v0*"]
 # else -- docs/ and llmservingsim/profiler/v0/ are not test trees.
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# ---------------------------------------------------------------------------
+# Ruff is the formatter and linter of record. It replaces the "no enforced
+# formatter, match the surrounding style" rule AGENTS.md carried before:
+# `ruff format` decides layout, `ruff check` decides the rest. Run both from
+# the repo root:
+#   ruff format .
+#   ruff check .
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+# The simulator container ships Python 3.10, so UP must not rewrite past it.
+target-version = "py310"
+
+# Python only. Ruff also formats fenced code blocks inside Markdown, and the
+# snippets in AGENTS.md and under docs/ are illustrative prose, not source.
+include = ["*.py", "*.pyi"]
+
+extend-exclude = [
+    "astra-sim",                  # submodule, built in place; AGENTS.md says do not edit it
+    "llmservingsim/profiler/v0",  # the pre-rewrite profiler, kept for reference only
+    "docs/build",
+    "docs/.docusaurus",
+    "outputs",
+]
+
+[tool.ruff.lint]
+# Deliberately narrow: pyflakes, pycodestyle errors, import sorting, pyupgrade
+# and flake8-bugbear. Enough to catch dead imports, shadowed names and idioms
+# that are actually wrong, without turning the first sweep into a diff nobody
+# can review. Widen one rule family at a time, each in its own commit.
+select = ["E", "F", "I", "UP", "B"]
+ignore = [
+    # The formatter owns line length, and it will not split a string or a
+    # comment. Every E501 left after `ruff format` is a long log message, a
+    # long f-string, or a result-summary line whose column alignment is the
+    # point -- rewrapping those buys nothing.
+    "E501",
+    # zip(..., strict=) is a real check, but whether each call site must have
+    # equal-length inputs is a per-site judgement, and guessing wrong turns a
+    # silent truncation into a crash. Worth a pass of its own, not this one.
+    "B905",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# The simulator is wired together with `import *`, and the re-exports are
+# transitive: llmservingsim/serving/__main__.py reaches RequestStatus through
+# llmservingsim.serving.core.scheduler, which reaches it through
+# llmservingsim.serving.core.request. Enumerating the names is a refactor with
+# its own validate.sh run, not part of a formatting sweep. Delete these entries
+# one file at a time.
+"llmservingsim/serving/__main__.py" = ["F403", "F405"]
+"llmservingsim/serving/core/graph_generator.py" = ["F403", "F405"]
+"llmservingsim/serving/core/pim_model.py" = ["F403", "F405"]
+"llmservingsim/serving/core/power_model.py" = ["F403", "F405"]
+"llmservingsim/serving/core/scheduler.py" = ["F403", "F405"]
+"llmservingsim/serving/core/trace_generator.py" = ["F403", "F405"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["llmservingsim"]

@@ -47,127 +47,213 @@ from __future__ import annotations
 import argparse
 import json
 import random
+from collections.abc import Iterable, Iterator
 from pathlib import Path
-from typing import Iterable, Iterator
 
 import numpy as np
-
 
 # ---------------------------------------------------------------------------
 # CLI plumbing — invoked from workloads.generators.__main__
 # ---------------------------------------------------------------------------
 
+
 def register_args(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--model", required=True,
-                   help="HF model id or local path. Used as the tokenizer "
-                        "(always) and as ``vllm.LLM(model=...)`` (when "
-                        "--use-vllm is set).")
-    p.add_argument("--source", default="shibing624/sharegpt_gpt4",
-                   help="HuggingFace dataset id or a local .json / .jsonl "
-                        "path. Default: shibing624/sharegpt_gpt4.")
-    p.add_argument("--num-reqs", type=int, required=True,
-                   dest="num_reqs",
-                   help="Number of requests to emit.")
-    p.add_argument("--sps", type=float, required=True,
-                   help="Arrival rate (requests / sec). Poisson-distributed.")
-    p.add_argument("--seed", type=int, default=42,
-                   help="RNG seed for sampling, shuffling, arrivals.")
-    p.add_argument("--output", required=True,
-                   help="Output JSONL path.")
-    p.add_argument("--first-arrival-sec", type=int, default=0,
-                   dest="first_arrival_sec",
-                   help="Offset (seconds) added to the first request's arrival.")
+    p.add_argument(
+        "--model",
+        required=True,
+        help="HF model id or local path. Used as the tokenizer "
+        "(always) and as ``vllm.LLM(model=...)`` (when "
+        "--use-vllm is set).",
+    )
+    p.add_argument(
+        "--source",
+        default="shibing624/sharegpt_gpt4",
+        help="HuggingFace dataset id or a local .json / .jsonl "
+        "path. Default: shibing624/sharegpt_gpt4.",
+    )
+    p.add_argument(
+        "--num-reqs", type=int, required=True, dest="num_reqs", help="Number of requests to emit."
+    )
+    p.add_argument(
+        "--sps",
+        type=float,
+        required=True,
+        help="Arrival rate (requests / sec). Poisson-distributed.",
+    )
+    p.add_argument(
+        "--seed", type=int, default=42, help="RNG seed for sampling, shuffling, arrivals."
+    )
+    p.add_argument("--output", required=True, help="Output JSONL path.")
+    p.add_argument(
+        "--first-arrival-sec",
+        type=int,
+        default=0,
+        dest="first_arrival_sec",
+        help="Offset (seconds) added to the first request's arrival.",
+    )
 
     # ---- Length filters ---------------------------------------------------
-    p.add_argument("--min-input-toks", type=int, default=0,
-                   dest="min_input_toks",
-                   help="Drop turns whose tokenized input is shorter than "
-                        "this. Default 0.")
-    p.add_argument("--max-input-toks", type=int, default=16384,
-                   dest="max_input_toks",
-                   help="Drop turns whose tokenized input exceeds this. "
-                        "Default 16384.")
-    p.add_argument("--min-output-toks", type=int, default=0,
-                   dest="min_output_toks",
-                   help="Drop turns whose tokenized target output is shorter "
-                        "than this. Default 0.")
-    p.add_argument("--max-output-toks", type=int, default=16384,
-                   dest="max_output_toks",
-                   help="Drop turns whose target output exceeds this. "
-                        "Default 16384.")
-    p.add_argument("--max-kv-toks", type=int, default=16384,
-                   dest="max_kv_toks",
-                   help="Drop turns whose input+output exceeds this "
-                        "(KV-memory upper bound). Default 16384.")
-    p.add_argument("--max-sessions", type=int, default=5000,
-                   dest="max_sessions",
-                   help="Cap on dataset rows fetched (0 = no cap). "
-                        "Default 5000.")
+    p.add_argument(
+        "--min-input-toks",
+        type=int,
+        default=0,
+        dest="min_input_toks",
+        help="Drop turns whose tokenized input is shorter than this. Default 0.",
+    )
+    p.add_argument(
+        "--max-input-toks",
+        type=int,
+        default=16384,
+        dest="max_input_toks",
+        help="Drop turns whose tokenized input exceeds this. Default 16384.",
+    )
+    p.add_argument(
+        "--min-output-toks",
+        type=int,
+        default=0,
+        dest="min_output_toks",
+        help="Drop turns whose tokenized target output is shorter than this. Default 0.",
+    )
+    p.add_argument(
+        "--max-output-toks",
+        type=int,
+        default=16384,
+        dest="max_output_toks",
+        help="Drop turns whose target output exceeds this. Default 16384.",
+    )
+    p.add_argument(
+        "--max-kv-toks",
+        type=int,
+        default=16384,
+        dest="max_kv_toks",
+        help="Drop turns whose input+output exceeds this (KV-memory upper bound). Default 16384.",
+    )
+    p.add_argument(
+        "--max-sessions",
+        type=int,
+        default=5000,
+        dest="max_sessions",
+        help="Cap on dataset rows fetched (0 = no cap). Default 5000.",
+    )
 
     # ---- Fixed-length mode ------------------------------------------------
-    p.add_argument("--fix-len", action="store_true",
-                   dest="fix_len", default=False,
-                   help="Generate random fixed-length inputs/outputs instead "
-                        "of parsing real conversations.")
-    p.add_argument("--fix-input-length", type=int, default=128,
-                   dest="fix_input_length",
-                   help="(--fix-len) input length. Default 128.")
-    p.add_argument("--fix-output-length", type=int, default=512,
-                   dest="fix_output_length",
-                   help="(--fix-len) output length. Default 512.")
+    p.add_argument(
+        "--fix-len",
+        action="store_true",
+        dest="fix_len",
+        default=False,
+        help="Generate random fixed-length inputs/outputs instead of parsing real conversations.",
+    )
+    p.add_argument(
+        "--fix-input-length",
+        type=int,
+        default=128,
+        dest="fix_input_length",
+        help="(--fix-len) input length. Default 128.",
+    )
+    p.add_argument(
+        "--fix-output-length",
+        type=int,
+        default=512,
+        dest="fix_output_length",
+        help="(--fix-len) output length. Default 512.",
+    )
 
     # ---- Pulse mode -------------------------------------------------------
-    p.add_argument("--pulse", action="store_true", default=False,
-                   help="Burst arrivals: --pulse-n requests fire instantly, "
-                        "then jump --pulse-delay-sec seconds before the next "
-                        "burst.")
-    p.add_argument("--pulse-n", type=int, default=10,
-                   dest="pulse_n",
-                   help="(--pulse) requests per burst. Default 10.")
-    p.add_argument("--pulse-delay-sec", type=int, default=60,
-                   dest="pulse_delay_sec",
-                   help="(--pulse) seconds between bursts. Default 60.")
-    p.add_argument("--pulse-poisson", action="store_true", default=False,
-                   dest="pulse_poisson",
-                   help="(--pulse) keep Poisson spacing inside each burst.")
+    p.add_argument(
+        "--pulse",
+        action="store_true",
+        default=False,
+        help="Burst arrivals: --pulse-n requests fire instantly, "
+        "then jump --pulse-delay-sec seconds before the next "
+        "burst.",
+    )
+    p.add_argument(
+        "--pulse-n",
+        type=int,
+        default=10,
+        dest="pulse_n",
+        help="(--pulse) requests per burst. Default 10.",
+    )
+    p.add_argument(
+        "--pulse-delay-sec",
+        type=int,
+        default=60,
+        dest="pulse_delay_sec",
+        help="(--pulse) seconds between bursts. Default 60.",
+    )
+    p.add_argument(
+        "--pulse-poisson",
+        action="store_true",
+        default=False,
+        dest="pulse_poisson",
+        help="(--pulse) keep Poisson spacing inside each burst.",
+    )
 
     # ---- vLLM-mode flags --------------------------------------------------
-    p.add_argument("--use-vllm", action="store_true",
-                   dest="use_vllm", default=False,
-                   help="Drive a real vLLM LLM engine to fill output_tok_ids "
-                        "with the model's natural responses (free generation).")
-    p.add_argument("--vllm-tp", type=int, default=1,
-                   dest="vllm_tp",
-                   help="(--use-vllm) tensor_parallel_size for the offline LLM.")
-    p.add_argument("--vllm-dtype", default="bfloat16",
-                   dest="vllm_dtype",
-                   help="(--use-vllm) Model dtype.")
-    p.add_argument("--vllm-max-num-seqs", type=int, default=1024,
-                   dest="vllm_max_num_seqs",
-                   help="(--use-vllm) max_num_seqs — set high for throughput. "
-                        "Default 1024.")
-    p.add_argument("--vllm-max-num-batched-tokens", type=int, default=16384,
-                   dest="vllm_max_num_batched_tokens",
-                   help="(--use-vllm) max_num_batched_tokens — set high for "
-                        "throughput. Default 16384.")
-    p.add_argument("--vllm-max-model-len", type=int, default=None,
-                   dest="vllm_max_model_len",
-                   help="(--use-vllm) Override model's max_model_len.")
-    p.add_argument("--vllm-temperature", type=float, default=0.0,
-                   dest="vllm_temperature",
-                   help="(--use-vllm) Sampling temperature (0 = greedy).")
-    p.add_argument("--vllm-repetition-penalty", type=float, default=1.1,
-                   dest="vllm_repetition_penalty",
-                   help="(--use-vllm) Repetition penalty. 1.0 disables it; "
-                        "values >1.0 down-weight previously-emitted tokens, "
-                        "which keeps free-generation from rambling and lets "
-                        "natural EOS fire at typical ShareGPT lengths "
-                        "(~500-1000 tokens). Default 1.1.")
+    p.add_argument(
+        "--use-vllm",
+        action="store_true",
+        dest="use_vllm",
+        default=False,
+        help="Drive a real vLLM LLM engine to fill output_tok_ids "
+        "with the model's natural responses (free generation).",
+    )
+    p.add_argument(
+        "--vllm-tp",
+        type=int,
+        default=1,
+        dest="vllm_tp",
+        help="(--use-vllm) tensor_parallel_size for the offline LLM.",
+    )
+    p.add_argument(
+        "--vllm-dtype", default="bfloat16", dest="vllm_dtype", help="(--use-vllm) Model dtype."
+    )
+    p.add_argument(
+        "--vllm-max-num-seqs",
+        type=int,
+        default=1024,
+        dest="vllm_max_num_seqs",
+        help="(--use-vllm) max_num_seqs — set high for throughput. Default 1024.",
+    )
+    p.add_argument(
+        "--vllm-max-num-batched-tokens",
+        type=int,
+        default=16384,
+        dest="vllm_max_num_batched_tokens",
+        help="(--use-vllm) max_num_batched_tokens — set high for throughput. Default 16384.",
+    )
+    p.add_argument(
+        "--vllm-max-model-len",
+        type=int,
+        default=None,
+        dest="vllm_max_model_len",
+        help="(--use-vllm) Override model's max_model_len.",
+    )
+    p.add_argument(
+        "--vllm-temperature",
+        type=float,
+        default=0.0,
+        dest="vllm_temperature",
+        help="(--use-vllm) Sampling temperature (0 = greedy).",
+    )
+    p.add_argument(
+        "--vllm-repetition-penalty",
+        type=float,
+        default=1.1,
+        dest="vllm_repetition_penalty",
+        help="(--use-vllm) Repetition penalty. 1.0 disables it; "
+        "values >1.0 down-weight previously-emitted tokens, "
+        "which keeps free-generation from rambling and lets "
+        "natural EOS fire at typical ShareGPT lengths "
+        "(~500-1000 tokens). Default 1.1.",
+    )
 
 
 # ---------------------------------------------------------------------------
 # Pipeline
 # ---------------------------------------------------------------------------
+
 
 def run(args: argparse.Namespace) -> int:
     random.seed(args.seed)
@@ -215,6 +301,7 @@ def run(args: argparse.Namespace) -> int:
 # Tokenizer
 # ---------------------------------------------------------------------------
 
+
 def _load_tokenizer(model: str):
     try:
         from transformers import AutoTokenizer
@@ -229,6 +316,7 @@ def _load_tokenizer(model: str):
 # ---------------------------------------------------------------------------
 # Multi-turn session parsing
 # ---------------------------------------------------------------------------
+
 
 def _parse_sessions(args: argparse.Namespace) -> list[list[tuple[str, str]]]:
     """Parse the source into a list of sessions; each session is a list of
@@ -301,6 +389,7 @@ def _stream_turns(
 # Source loading
 # ---------------------------------------------------------------------------
 
+
 def _load_source(source: str, max_rows: int) -> Iterable[dict]:
     """Yield up to ``max_rows`` rows from the source (``max_rows <= 0`` =
     no cap).
@@ -323,8 +412,7 @@ def _load_source(source: str, max_rows: int) -> Iterable[dict]:
         with p.open() as f:
             data = json.load(f)
         rows = data if unlimited else data[:max_rows]
-        for row in rows:
-            yield row
+        yield from rows
         return
 
     try:
@@ -344,9 +432,8 @@ def _load_source(source: str, max_rows: int) -> Iterable[dict]:
 # Fixed-length mode
 # ---------------------------------------------------------------------------
 
-def _gen_fixed_length(
-    args: argparse.Namespace, tok
-) -> Iterator[tuple[list[int], list[int]]]:
+
+def _gen_fixed_length(args: argparse.Namespace, tok) -> Iterator[tuple[list[int], list[int]]]:
     vocab_size = getattr(tok, "vocab_size", 32000)
     for _ in range(args.num_reqs):
         in_ids = [random.randint(0, vocab_size - 1) for _ in range(args.fix_input_length)]
@@ -357,6 +444,7 @@ def _gen_fixed_length(
 # ---------------------------------------------------------------------------
 # vLLM offline batched generation (max throughput, no rate limit)
 # ---------------------------------------------------------------------------
+
 
 def _override_outputs_with_vllm(
     args: argparse.Namespace,
@@ -372,8 +460,10 @@ def _override_outputs_with_vllm(
     from vllm import LLM, SamplingParams
     from vllm.inputs import TokensPrompt
 
-    print(f"Booting vLLM LLM (model={args.model}, tp={args.vllm_tp}, "
-          f"max_num_seqs={args.vllm_max_num_seqs})…")
+    print(
+        f"Booting vLLM LLM (model={args.model}, tp={args.vllm_tp}, "
+        f"max_num_seqs={args.vllm_max_num_seqs})…"
+    )
     llm = LLM(
         model=args.model,
         tensor_parallel_size=args.vllm_tp,
@@ -391,15 +481,13 @@ def _override_outputs_with_vllm(
     prompts = [TokensPrompt(prompt_token_ids=in_ids) for in_ids, _ in pairs]
     print(f"Generating {len(prompts)} responses (max_tokens={args.max_output_toks})…")
     outs = llm.generate(prompts, sp, use_tqdm=True)
-    return [
-        (in_ids, list(out.outputs[0].token_ids))
-        for (in_ids, _), out in zip(pairs, outs)
-    ]
+    return [(in_ids, list(out.outputs[0].token_ids)) for (in_ids, _), out in zip(pairs, outs)]
 
 
 # ---------------------------------------------------------------------------
 # Arrival sampling
 # ---------------------------------------------------------------------------
+
 
 def _advance_arrival(time_ns: int, request_idx: int, args: argparse.Namespace) -> int:
     """Compute the next request's arrival timestamp (ns).

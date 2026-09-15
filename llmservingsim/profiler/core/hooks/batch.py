@@ -53,7 +53,7 @@ class Shot:
         return asdict(self)
 
     @classmethod
-    def hydrate(cls, raw: dict[str, Any]) -> "Shot":
+    def hydrate(cls, raw: dict[str, Any]) -> Shot:
         return cls(
             requests=[tuple(r) for r in raw.get("requests", [])],
             experts=raw.get("experts"),
@@ -64,12 +64,12 @@ class Shot:
     # -----------------------------------------------------------------
 
     @classmethod
-    def dense(cls, total_tokens: int) -> "Shot":
+    def dense(cls, total_tokens: int) -> Shot:
         """One request carrying ``total_tokens`` new tokens, no KV history."""
         return cls(requests=[(total_tokens, 0)])
 
     @classmethod
-    def per_sequence(cls, num_sequences: int) -> "Shot":
+    def per_sequence(cls, num_sequences: int) -> Shot:
         """``num_sequences`` one-token requests.
 
         Used for lm_head / sampler profiling where cost scales with the
@@ -84,7 +84,7 @@ class Shot:
         kv_prefill: int,
         n_decode: int,
         kv_decode: int,
-    ) -> "Shot":
+    ) -> Shot:
         """Mixed prefill+decode batch for unified attention profiling.
 
         At most one prefill + ``n_decode`` decode requests. Either
@@ -100,7 +100,7 @@ class Shot:
         return cls(requests=reqs)
 
     @classmethod
-    def moe(cls, total_tokens: int, activated_experts: int) -> "Shot":
+    def moe(cls, total_tokens: int, activated_experts: int) -> Shot:
         """Dense-style batch tagged with MoE routing metadata."""
         return cls(
             requests=[(total_tokens, 0)],
@@ -148,10 +148,7 @@ def assemble_scheduler_output(shot: Shot, model_runner):
     # hybrid architectures). We honor all of them by reading the
     # worker's live block_table list.
     block_tables = model_runner.input_batch.block_table.block_tables
-    block_sizes = [
-        bt.block_size * bt.blocks_per_kv_block
-        for bt in block_tables
-    ]
+    block_sizes = [bt.block_size * bt.blocks_per_kv_block for bt in block_tables]
     num_kv_groups = len(block_sizes)
 
     scheduled: list = []

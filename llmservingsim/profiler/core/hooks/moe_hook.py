@@ -25,10 +25,10 @@ monkey-patch to match renamed or restructured symbols.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import wraps
-from typing import Iterator
 
 import torch
 
@@ -61,7 +61,7 @@ class ExpertRoute:
         layer,
         num_tokens: int,
         activated_experts: int,
-    ) -> "ExpertRoute":
+    ) -> ExpertRoute:
         """Allocate ``weights`` and ``ids`` for a single FusedMoE layer.
 
         Args:
@@ -74,10 +74,7 @@ class ExpertRoute:
         """
         top_k = layer.top_k
         if activated_experts < top_k:
-            raise ValueError(
-                f"activated_experts ({activated_experts}) must be >= "
-                f"top_k ({top_k})"
-            )
+            raise ValueError(f"activated_experts ({activated_experts}) must be >= top_k ({top_k})")
         if activated_experts > num_tokens * top_k:
             raise ValueError(
                 f"activated_experts ({activated_experts}) cannot exceed "
@@ -101,8 +98,7 @@ class ExpertRoute:
         expected_shape = (num_tokens, top_k)
         if tuple(ids.shape) != expected_shape:
             raise ValueError(
-                f"Forged topk_ids shape mismatch: expected {expected_shape}, "
-                f"got {tuple(ids.shape)}"
+                f"Forged topk_ids shape mismatch: expected {expected_shape}, got {tuple(ids.shape)}"
             )
 
         weights = torch.full(
@@ -131,10 +127,7 @@ def _cycle_expert_ids(
     ``id = (token_idx * top_k + offset) % activated_experts``.
     """
     return [
-        [
-            (token_idx * top_k + offset) % activated_experts
-            for offset in range(top_k)
-        ]
+        [(token_idx * top_k + offset) % activated_experts for offset in range(top_k)]
         for token_idx in range(num_tokens)
     ]
 
@@ -142,6 +135,7 @@ def _cycle_expert_ids(
 # ---------------------------------------------------------------------------
 # Context manager: live FusedMoE patch
 # ---------------------------------------------------------------------------
+
 
 @contextmanager
 def force_moe_routing(route: ExpertRoute | None) -> Iterator[None]:
@@ -236,6 +230,7 @@ def force_moe_routing(route: ExpertRoute | None) -> Iterator[None]:
 # Helpers that run worker-side
 # ---------------------------------------------------------------------------
 
+
 def single_moe_layer(model_runner):
     """Return the model's lone ``FusedMoE`` layer.
 
@@ -250,7 +245,6 @@ def single_moe_layer(model_runner):
     moe_layers = [m for m in model.modules() if isinstance(m, FusedMoE)]
     if len(moe_layers) != 1:
         raise RuntimeError(
-            f"Expected exactly one FusedMoE layer in the test model, "
-            f"got {len(moe_layers)}"
+            f"Expected exactly one FusedMoE layer in the test model, got {len(moe_layers)}"
         )
     return moe_layers[0]

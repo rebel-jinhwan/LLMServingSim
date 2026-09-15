@@ -31,7 +31,7 @@ reported for energy accounting only. Eviction from the NPU costs nothing --
 either the data is a finished request's cache, or a copy already exists below.
 """
 
-from .block_pool import NONE_HASH, BlockPool, Device
+from .block_pool import NONE_HASH
 
 
 def cdiv(a, b):
@@ -65,7 +65,7 @@ def request_block_hashes(req, block_size):
     hashes = []
     parent = NONE_HASH
     for start in range(0, len(tokens) - block_size + 1, block_size):
-        parent = hash((parent, tuple(tokens[start:start + block_size])))
+        parent = hash((parent, tuple(tokens[start : start + block_size])))
         hashes.append(parent)
     req.block_hashes = hashes
     return hashes
@@ -213,8 +213,9 @@ class TieredKVCacheManager:
         num_evictable = sum(1 for b in new_computed_blocks if b.ref_cnt == 0)
         return num_new_blocks + num_evictable
 
-    def can_fit_full_sequence(self, req, new_computed_blocks=None,
-                              num_new_computed_tokens=0, num_lower_tier_tokens=0):
+    def can_fit_full_sequence(
+        self, req, new_computed_blocks=None, num_new_computed_tokens=0, num_lower_tier_tokens=0
+    ):
         """Would ``req``'s whole sequence fit, not just this step's chunk?
 
         vLLM's admission gate (``kv_cache_manager.can_fit_full_sequence``, called
@@ -229,18 +230,24 @@ class TieredKVCacheManager:
         0.8 to 1.0, i.e. it is not a capacity effect.
         """
         new_computed_blocks = new_computed_blocks or []
-        total_computed = (req.num_computed_tokens + num_new_computed_tokens
-                          + num_lower_tier_tokens)
+        total_computed = req.num_computed_tokens + num_new_computed_tokens + num_lower_tier_tokens
         # The length reached so far, which for a request being admitted for the
         # first time is its whole prompt. num_tokens_reached rather than
         # num_computed_tokens: preemption resets the latter to 0.
         full_num_tokens = max(req.num_tokens_reached, total_computed)
-        return self._num_blocks_to_allocate(
-            req, full_num_tokens, new_computed_blocks
-        ) <= self.npu_pool.get_num_free_blocks()
+        return (
+            self._num_blocks_to_allocate(req, full_num_tokens, new_computed_blocks)
+            <= self.npu_pool.get_num_free_blocks()
+        )
 
-    def allocate_slots(self, req, num_new_tokens, new_computed_blocks=None,
-                       num_new_computed_tokens=0, num_lower_tier_tokens=0):
+    def allocate_slots(
+        self,
+        req,
+        num_new_tokens,
+        new_computed_blocks=None,
+        num_new_computed_tokens=0,
+        num_lower_tier_tokens=0,
+    ):
         """Give ``req`` slots for ``num_new_tokens`` more tokens.
 
         Returns the newly allocated blocks, or **None** when the pool cannot
@@ -263,9 +270,10 @@ class TieredKVCacheManager:
                 f"given new computed blocks"
             )
 
-        if self._num_blocks_to_allocate(
-                req, num_tokens_need_slot, new_computed_blocks
-        ) > self.npu_pool.get_num_free_blocks():
+        if (
+            self._num_blocks_to_allocate(req, num_tokens_need_slot, new_computed_blocks)
+            > self.npu_pool.get_num_free_blocks()
+        ):
             return None
 
         # ---- past this point the allocation is guaranteed to succeed ----
@@ -281,8 +289,7 @@ class TieredKVCacheManager:
 
         if self.enable_caching:
             # Cap at the reached length: only finalised tokens may be indexed.
-            self.cache_blocks(
-                req, min(total_computed + num_new_tokens, req.num_tokens_reached))
+            self.cache_blocks(req, min(total_computed + num_new_tokens, req.num_tokens_reached))
         return new_blocks
 
     def _allocate_new_blocks(self, req, num_tokens):
@@ -346,7 +353,7 @@ class TieredKVCacheManager:
         for pool in self.lower_pools:
             factor = self._factor(pool)
             first = num_cached // factor
-            last = num_full // factor          # exclusive; only complete coarse blocks
+            last = num_full // factor  # exclusive; only complete coarse blocks
             for idx in range(first, last):
                 block_hash = self._coarse_hash(hashes, pool, idx)
                 if block_hash is None:

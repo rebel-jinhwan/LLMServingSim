@@ -54,7 +54,6 @@ from llmservingsim.profiler.core.config import (
 )
 from llmservingsim.profiler.core.runner import run_full, run_slice
 
-
 # ---------------------------------------------------------------------------
 # Default paths
 # ---------------------------------------------------------------------------
@@ -62,108 +61,157 @@ from llmservingsim.profiler.core.runner import run_full, run_slice
 # Resolved relative to the profiler/ directory that houses this
 # package so the CLI works regardless of cwd.
 
-_PKG_ROOT = Path(__file__).resolve().parent         # .../llmservingsim/profiler
-_REPO_ROOT = _PKG_ROOT.parents[1]                   # .../LLMServingSim
+_PKG_ROOT = Path(__file__).resolve().parent  # .../llmservingsim/profiler
+_REPO_ROOT = _PKG_ROOT.parents[1]  # .../LLMServingSim
 
-ARCH_DIR = _PKG_ROOT / "models"                     # architecture yamls
-PERF_DIR = _REPO_ROOT / "profiler" / "perf"         # profiled CSV bundles, at the repo root
-MODEL_CONFIG_DIR = _REPO_ROOT / "configs" / "model" # LLMServingSim's shared configs
+ARCH_DIR = _PKG_ROOT / "models"  # architecture yamls
+PERF_DIR = _REPO_ROOT / "profiler" / "perf"  # profiled CSV bundles, at the repo root
+MODEL_CONFIG_DIR = _REPO_ROOT / "configs" / "model"  # LLMServingSim's shared configs
 
 
 # ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
 
+
 def _add_common_flags(p: argparse.ArgumentParser) -> None:
     """Flags shared between profile and slice subcommands."""
     p.add_argument(
         "--hardware",
         required=True,
-        help="Hardware identifier (e.g., H100, A6000). Becomes a "
-             "folder name under perf/.",
+        help="Hardware identifier (e.g., H100, A6000). Becomes a folder name under perf/.",
     )
     p.add_argument(
         "--tp",
         default="1",
-        help="Comma-separated TP degrees to sweep, e.g. '1,2,4'. "
-             "Must include 1. Default: '1'.",
+        help="Comma-separated TP degrees to sweep, e.g. '1,2,4'. Must include 1. Default: '1'.",
     )
     p.add_argument(
         "--variant",
         default=None,
         help="Output folder label. Default: auto-derived from dtype "
-             "and kv_cache_dtype (e.g. 'bfloat16' or 'bfloat16-kvfp8').",
+        "and kv_cache_dtype (e.g. 'bfloat16' or 'bfloat16-kvfp8').",
     )
 
     # Engine kwargs.
-    p.add_argument("--dtype", default=None,
-                   help="Model weight dtype (bfloat16/float16/float32/fp8). "
-                        "Default: vLLM default.")
-    p.add_argument("--kv-cache-dtype", default=None,
-                   help="KV cache dtype (auto/fp8/fp16/bf16). Default: auto.")
-    p.add_argument("--max-num-batched-tokens", type=int, default=None,
-                   dest="max_num_batched_tokens",
-                   help="Per-step token budget. Matches vLLM's own "
-                        "``--max-num-batched-tokens``. Default: 2048.")
-    p.add_argument("--max-num-seqs", type=int, default=None,
-                   dest="max_num_seqs",
-                   help="Max concurrent sequences. Matches vLLM's own "
-                        "``--max-num-seqs``. Default: 256.")
+    p.add_argument(
+        "--dtype",
+        default=None,
+        help="Model weight dtype (bfloat16/float16/float32/fp8). Default: vLLM default.",
+    )
+    p.add_argument(
+        "--kv-cache-dtype", default=None, help="KV cache dtype (auto/fp8/fp16/bf16). Default: auto."
+    )
+    p.add_argument(
+        "--max-num-batched-tokens",
+        type=int,
+        default=None,
+        dest="max_num_batched_tokens",
+        help="Per-step token budget. Matches vLLM's own "
+        "``--max-num-batched-tokens``. Default: 2048.",
+    )
+    p.add_argument(
+        "--max-num-seqs",
+        type=int,
+        default=None,
+        dest="max_num_seqs",
+        help="Max concurrent sequences. Matches vLLM's own ``--max-num-seqs``. Default: 256.",
+    )
 
     # Attention grid.
-    p.add_argument("--attention-max-kv", type=int, default=16384,
-                   help="Cap for the kv_prefill / kv_decode axes. The "
-                        "grid grows geometrically from 512 up to "
-                        "min(this, max_model_len). Default: 16384.")
-    p.add_argument("--attention-chunk-factor", type=float, default=2.0,
-                   dest="attention_chunk_factor",
-                   help="Geometric factor for the prefill_chunk axis. "
-                        "2.0 (default) is doubling. Lower for denser grid.")
-    p.add_argument("--attention-kv-factor", type=float, default=2.0,
-                   dest="attention_kv_factor",
-                   help="Geometric factor for the kv_prefill / kv_decode "
-                        "axes. 2.0 (default) is doubling.")
-    p.add_argument("--measurement-iterations", type=int, default=3,
-                   dest="measurement_iterations",
-                   help="Timed forwards per shot (averaged). A single sample "
-                        "can swing 15-25%% on large GEMMs due to DVFS / clock "
-                        "jitter; N=3 (default) cuts that to ~5%% at ~3x "
-                        "profile time.")
-    p.add_argument("--skip-skew", action="store_true", default=False,
-                   dest="skip_skew",
-                   help="Skip the per-TP skew profiling step (skew.csv). "
-                        "Alpha formula fit relies on this data; only skip "
-                        "for quick uniform-attention-only runs.")
-    p.add_argument("--skew-n-factor", type=float, default=2.0,
-                   dest="skew_n_factor",
-                   help="Geometric factor for the skew n (total decodes) "
-                        "axis. 2.0 (default) is doubling; higher coarsens "
-                        "and speeds up the sweep.")
-    p.add_argument("--skew-pc-factor", type=float, default=2.0,
-                   dest="skew_pc_factor",
-                   help="Geometric factor for the skew pc (prefill chunk) "
-                        "axis. 2.0 (default) is doubling.")
-    p.add_argument("--skew-kp-factor", type=float, default=2.0,
-                   dest="skew_kp_factor",
-                   help="Geometric factor for the skew kp (prefill history) "
-                        "axis. 2.0 (default) is doubling.")
-    p.add_argument("--skew-kvs-factor", type=float, default=2.0,
-                   dest="skew_kvs_factor",
-                   help="Geometric factor for the skew kvs (small-decode kv) "
-                        "axis. 2.0 (default) is doubling.")
-    p.add_argument("--only-skew", action="store_true", default=False,
-                   dest="only_skew",
-                   help="Skip the uniform attention/dense/per_seq/moe "
-                        "categories and run ONLY the skew step. Use when "
-                        "the uniform sweep is already done and you want "
-                        "to add (or refresh) skew.csv without redoing "
-                        "the rest.")
-    p.add_argument("--force", action="store_true", default=False,
-                   dest="force",
-                   help="Wipe existing CSVs and re-profile from scratch. "
-                        "Default is resume mode: existing rows are preserved "
-                        "and only shots whose keys aren't already in the CSV "
-                        "get fired. Applies to every category plus skew.")
+    p.add_argument(
+        "--attention-max-kv",
+        type=int,
+        default=16384,
+        help="Cap for the kv_prefill / kv_decode axes. The "
+        "grid grows geometrically from 512 up to "
+        "min(this, max_model_len). Default: 16384.",
+    )
+    p.add_argument(
+        "--attention-chunk-factor",
+        type=float,
+        default=2.0,
+        dest="attention_chunk_factor",
+        help="Geometric factor for the prefill_chunk axis. "
+        "2.0 (default) is doubling. Lower for denser grid.",
+    )
+    p.add_argument(
+        "--attention-kv-factor",
+        type=float,
+        default=2.0,
+        dest="attention_kv_factor",
+        help="Geometric factor for the kv_prefill / kv_decode axes. 2.0 (default) is doubling.",
+    )
+    p.add_argument(
+        "--measurement-iterations",
+        type=int,
+        default=3,
+        dest="measurement_iterations",
+        help="Timed forwards per shot (averaged). A single sample "
+        "can swing 15-25%% on large GEMMs due to DVFS / clock "
+        "jitter; N=3 (default) cuts that to ~5%% at ~3x "
+        "profile time.",
+    )
+    p.add_argument(
+        "--skip-skew",
+        action="store_true",
+        default=False,
+        dest="skip_skew",
+        help="Skip the per-TP skew profiling step (skew.csv). "
+        "Alpha formula fit relies on this data; only skip "
+        "for quick uniform-attention-only runs.",
+    )
+    p.add_argument(
+        "--skew-n-factor",
+        type=float,
+        default=2.0,
+        dest="skew_n_factor",
+        help="Geometric factor for the skew n (total decodes) "
+        "axis. 2.0 (default) is doubling; higher coarsens "
+        "and speeds up the sweep.",
+    )
+    p.add_argument(
+        "--skew-pc-factor",
+        type=float,
+        default=2.0,
+        dest="skew_pc_factor",
+        help="Geometric factor for the skew pc (prefill chunk) axis. 2.0 (default) is doubling.",
+    )
+    p.add_argument(
+        "--skew-kp-factor",
+        type=float,
+        default=2.0,
+        dest="skew_kp_factor",
+        help="Geometric factor for the skew kp (prefill history) axis. 2.0 (default) is doubling.",
+    )
+    p.add_argument(
+        "--skew-kvs-factor",
+        type=float,
+        default=2.0,
+        dest="skew_kvs_factor",
+        help="Geometric factor for the skew kvs (small-decode kv) axis. 2.0 (default) is doubling.",
+    )
+    p.add_argument(
+        "--only-skew",
+        action="store_true",
+        default=False,
+        dest="only_skew",
+        help="Skip the uniform attention/dense/per_seq/moe "
+        "categories and run ONLY the skew step. Use when "
+        "the uniform sweep is already done and you want "
+        "to add (or refresh) skew.csv without redoing "
+        "the rest.",
+    )
+    p.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+        dest="force",
+        help="Wipe existing CSVs and re-profile from scratch. "
+        "Default is resume mode: existing rows are preserved "
+        "and only shots whose keys aren't already in the CSV "
+        "get fired. Applies to every category plus skew.",
+    )
 
     # Output root.
     p.add_argument(
@@ -178,8 +226,7 @@ def _add_common_flags(p: argparse.ArgumentParser) -> None:
         "--model-config-root",
         type=Path,
         default=MODEL_CONFIG_DIR,
-        help=f"Directory holding ``<org>/<name>.json`` HF configs. "
-             f"Default: {MODEL_CONFIG_DIR}.",
+        help=f"Directory holding ``<org>/<name>.json`` HF configs. Default: {MODEL_CONFIG_DIR}.",
     )
 
     # Verbosity.
@@ -239,8 +286,7 @@ def _fetch_hf_config(hf_id: str, target: Path) -> Path:
 
     token = os.environ.get("HF_TOKEN")
     log.info(
-        "Model config not found locally; fetching %s/config.json from "
-        "HuggingFace Hub …",
+        "Model config not found locally; fetching %s/config.json from HuggingFace Hub …",
         hf_id,
     )
     try:
@@ -341,6 +387,7 @@ def _build_profile_args(
 # Main
 # ---------------------------------------------------------------------------
 
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="python -m llmservingsim.profiler",
@@ -356,7 +403,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_profile.add_argument(
         "model",
         help="HF model id (e.g. meta-llama/Llama-3.1-8B). Must match a "
-             "config file under configs/model/.",
+        "config file under configs/model/.",
     )
     _add_common_flags(p_profile)
 
@@ -370,7 +417,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="HF model id.",
     )
     p_slice.add_argument(
-        "--tp-refresh", type=int, required=True, dest="tp_refresh",
+        "--tp-refresh",
+        type=int,
+        required=True,
+        dest="tp_refresh",
         help="TP degree to refresh.",
     )
     p_slice.add_argument(
@@ -403,13 +453,16 @@ def main(argv: list[str] | None = None) -> int:
 
     log.info(
         "Model config: %s (model_type=%s → architecture=%s)",
-        model_config_path, model_type, arch_path.stem,
+        model_config_path,
+        model_type,
+        arch_path.stem,
     )
     log.debug("Model config fields: %s", sorted(model_config.keys()))
 
     # 4. Build per-session ProfileArgs.
     profile_args = _build_profile_args(
-        ns, hf_id,
+        ns,
+        hf_id,
         architecture=arch_path.stem,
         model_config=model_config,
     )
