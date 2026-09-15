@@ -40,6 +40,7 @@ include = ["llmservingsim*"]
 exclude = ["llmservingsim.profiler.v0*"]
 
 [tool.setuptools.package-data]
+"llmservingsim.platforms" = ["*/devices/*.yaml"]
 "llmservingsim.profiler" = ["models/*.yaml"]
 
 # So a bare `pytest` from the repo root collects the unit checks and nothing

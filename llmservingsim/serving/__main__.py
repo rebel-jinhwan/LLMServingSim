@@ -15,6 +15,7 @@ import sys as flush
 from collections import defaultdict, deque
 from time import time
 
+from llmservingsim.platforms import load_device, load_platform
 from llmservingsim.serving.core.config_builder import *
 from llmservingsim.serving.core.controller import *
 from llmservingsim.serving.core.graph_generator import *
@@ -92,9 +93,11 @@ def _runtime_limit(value):
 
 
 def _cluster_config_path(path):
-    if os.path.isabs(path):
-        return path
-    return os.path.join("..", path)
+    # The same search build_cluster_config does, so the overrides this reads
+    # and the config it builds are always the same file.
+    from .core.config_builder import resolve_cluster_config
+
+    return resolve_cluster_config(path)
 
 
 def _load_cluster_config_for_overrides(path):
@@ -208,6 +211,13 @@ def _build_instance_runtime_configs(instances, args, dtype_to_bits):
             raise ValueError(
                 f"Unsupported kv_cache_dtype '{kv_cache_dtype}' for instance {instance_id}"
             )
+        device = load_device(instance["hardware"])
+        if device is not None and not device.supports_kv_cache_dtype(kv_cache_dtype):
+            raise ValueError(
+                f"kv_cache_dtype '{kv_cache_dtype}' for instance {instance_id} is not supported "
+                f"on {instance['hardware']}: its device spec says support_fp8_kv: false "
+                f"({device.source})"
+            )
 
         enable_attn_offloading = instance.get("enable_attn_offloading", args.enable_attn_offloading)
         enable_sub_batch_interleaving = instance.get(
@@ -252,6 +262,10 @@ def _build_instance_runtime_configs(instances, args, dtype_to_bits):
                 "enable_attn_offloading": enable_attn_offloading,
                 "enable_sub_batch_interleaving": enable_sub_batch_interleaving,
                 "enable_block_copy": instance.get("enable_block_copy", args.enable_block_copy),
+                "step_overhead_us": float(instance.get("step_overhead_us", args.step_overhead_us)),
+                "prefill_step_overhead_us": float(
+                    instance.get("prefill_step_overhead_us", args.prefill_step_overhead_us)
+                ),
             }
         )
     return runtime_configs
@@ -266,7 +280,9 @@ def main():
     os.chdir(astra_sim)
 
     # -------------------------------------- Argument parsing --------------------------------------
-    parser = argparse.ArgumentParser(prog="python -m serving", description="LLMServingSim")
+    parser = argparse.ArgumentParser(
+        prog="python -m llmservingsim.serving", description="LLMServingSim"
+    )
 
     parser.add_argument(
         "--cluster-config",
@@ -497,6 +513,50 @@ def main():
         'halves KV cache memory. Override per instance with "kv_cache_dtype"',
     )
     parser.add_argument(
+        "--platform",
+        type=str,
+        default=None,
+        help="Platform (cuda, or one installed through the llmservingsim.platforms "
+        "entry-point group). Default: the platform recorded in each instance's perf "
+        "bundle meta.yaml, then $LLMSERVINGSIM_PLATFORM, then the platform whose "
+        "devices/ describes the instance's hardware, else cuda. Picks the scheduler; "
+        "the trace shape follows the bundle either way.",
+    )
+    parser.add_argument(
+        "--scheduler",
+        type=str,
+        choices=["platform", "vllm"],
+        default="platform",
+        help="platform: the scheduler the platform names (cuda: the in-tree port; an "
+        "out-of-tree platform may name its vLLM plugin's own). vllm: drive the installed "
+        "vLLM's own scheduler "
+        "through serving.core.vllm_scheduler regardless of platform (needs vLLM importable).",
+    )
+    parser.add_argument(
+        "--step-overhead-us",
+        type=float,
+        default=0.0,
+        help="Host time per step, in microseconds, added to every row of a step-granularity "
+        "profile: scheduler, executor round trip and output handling that the profiled "
+        "execute_model does not include. Calibrate against a bench run like mem_util. "
+        'Per-instance as "step_overhead_us"',
+    )
+    parser.add_argument(
+        "--prefill-step-overhead-us",
+        type=float,
+        default=0.0,
+        help="Extra host time on a step that carries a prefill chunk (step-granularity "
+        'profiles). Per-instance as "prefill_step_overhead_us"',
+    )
+    parser.add_argument(
+        "--engine-kwargs",
+        type=str,
+        default=None,
+        help="JSON object of extra vLLM EngineArgs for the vLLM-driven scheduler "
+        "(--scheduler vllm, or a platform that names one), e.g. '{\"max_model_len\": 65536}'. "
+        "Ignored by the in-tree scheduler.",
+    )
+    parser.add_argument(
         "--network-backend",
         type=str,
         choices=["analytical", "ns3"],
@@ -684,8 +744,36 @@ def main():
 
         inst_cfg = instance_runtime_configs[instance_id]
 
+        # The bundle names the platform it was profiled on, so the scheduler
+        # follows the data: a step-granularity bundle gets its platform's
+        # scheduler, such as a no-mixed-batching one, without a flag.
+        platform = load_platform(
+            args.platform,
+            load_bundle_meta(
+                instance["hardware"],
+                instance["model_name"],
+                inst_cfg["dtype"],
+                inst_cfg["kv_cache_dtype"],
+            ),
+            hardware=instance["hardware"],
+        )
+        scheduler_cls = platform.scheduler
+        if args.scheduler == "vllm":
+            from llmservingsim.serving.core.vllm_scheduler import VllmScheduler
+
+            scheduler_cls = VllmScheduler
+        if args.engine_kwargs:
+            from llmservingsim.serving.core.vllm_scheduler import VllmScheduler
+
+            if not issubclass(scheduler_cls, VllmScheduler):
+                raise ValueError("--engine-kwargs only applies to the vLLM-driven scheduler")
+            scheduler_cls = type(
+                scheduler_cls.__name__,
+                (scheduler_cls,),
+                {"ENGINE_ARGS": {**scheduler_cls.ENGINE_ARGS, **json.loads(args.engine_kwargs)}},
+            )
         schedulers.append(
-            Scheduler(
+            scheduler_cls(
                 instance["model_name"],
                 instance["node_id"],
                 instance_id,
@@ -1047,6 +1135,8 @@ def main():
                             ep_dim=inst.get("ep_dim"),
                             dp_sum_total_len=sum_total_len,
                             enable_block_copy=inst_cfg["enable_block_copy"],
+                            step_overhead_us=inst_cfg["step_overhead_us"],
+                            prefill_step_overhead_us=inst_cfg["prefill_step_overhead_us"],
                             inputs_root=run_paths.inputs_root,
                         )
                         generate_graph(
@@ -1161,6 +1251,8 @@ def main():
                                 ep_dim=inst.get("ep_dim"),
                                 dp_sum_total_len=sum_total_len,
                                 enable_block_copy=inst_cfg["enable_block_copy"],
+                                step_overhead_us=inst_cfg["step_overhead_us"],
+                                prefill_step_overhead_us=inst_cfg["prefill_step_overhead_us"],
                                 inputs_root=run_paths.inputs_root,
                             )
                             generate_graph(
@@ -1233,6 +1325,8 @@ def main():
                         tp_dim=instance["tp_dim"],
                         ep_dim=instance["ep_dim"],
                         enable_block_copy=inst_cfg["enable_block_copy"],
+                        step_overhead_us=inst_cfg["step_overhead_us"],
+                        prefill_step_overhead_us=inst_cfg["prefill_step_overhead_us"],
                         inputs_root=run_paths.inputs_root,
                     )
                     generate_graph(

@@ -15,9 +15,13 @@ FORCE_COLOR="${FORCE_COLOR:-1}"
 
 export TERM LANG FORCE_COLOR
 
-# Examples are keyed by <hardware>/<model>, matching the directory layout
-# under this folder. Each one carries its own config.json, so nothing has
-# to be kept in sync with a parallel configs/ tree.
+# Examples are keyed by <hardware>/<model>, and each carries its own
+# config.json, so nothing has to be kept in sync with a parallel configs/
+# tree. They live under this folder by default; an out-of-tree platform
+# ships its own, so point EXAMPLES_DIR at its examples/ folder and paths
+# outside this repo are passed through absolute.
+EXAMPLES_DIR="${EXAMPLES_DIR:-$SCRIPT_DIR}"
+
 DEFAULT_EXAMPLES=(
     "RTXPRO6000/Llama-3.1-8B"
     "RTXPRO6000/Qwen3-32B"
@@ -59,29 +63,22 @@ resolve_repo_path() {
     fi
 }
 
+# Relative to the repo root when the path is inside it (the simulator runs
+# from astra-sim/ and prefixes ../), absolute when it is not.
 repo_relative_path() {
     local path="$1"
-    if [[ "$path" = /* ]]; then
-        case "$path" in
-            "$REPO_ROOT"/*)
-                printf '%s\n' "${path#"$REPO_ROOT"/}"
-                ;;
-            *)
-                echo "Path must live under the repo root: $path" >&2
-                exit 1
-                ;;
-        esac
-    else
-        printf '%s\n' "$path"
-    fi
+    case "$path" in
+        "$REPO_ROOT"/*) printf '%s\n' "${path#"$REPO_ROOT"/}" ;;
+        *) printf '%s\n' "$path" ;;
+    esac
 }
 
 run_example() {
     local model_dir="$1"   # <hardware>/<model>
-    local meta="$SCRIPT_DIR/$model_dir/vllm/meta.json"
-    local config="$SCRIPT_DIR/$model_dir/config.json"
+    local meta="$EXAMPLES_DIR/$model_dir/vllm/meta.json"
+    local config="$EXAMPLES_DIR/$model_dir/config.json"
     local config_rel
-    local output_dir="$SCRIPT_DIR/$model_dir/outputs"
+    local output_dir="$EXAMPLES_DIR/$model_dir/outputs"
     local output_dir_rel
 
     [[ -f "$meta" ]] || { echo "Missing meta: $meta" >&2; exit 1; }
@@ -143,11 +140,18 @@ run_example() {
 }
 
 if [[ $# -eq 0 ]]; then
-    set -- "${DEFAULT_EXAMPLES[@]}"
+    if [[ "$EXAMPLES_DIR" == "$SCRIPT_DIR" ]]; then
+        set -- "${DEFAULT_EXAMPLES[@]}"
+    else
+        # An out-of-tree examples folder has no curated list: run them all.
+        mapfile -t found < <(cd "$EXAMPLES_DIR" && ls -d */*/ 2>/dev/null | sed 's|/$||' | sort)
+        [[ ${#found[@]} -gt 0 ]] || { echo "No examples under $EXAMPLES_DIR" >&2; exit 2; }
+        set -- "${found[@]}"
+    fi
 fi
 
 for example in "$@"; do
-    if [[ -d "$SCRIPT_DIR/$example" && -f "$SCRIPT_DIR/$example/config.json" ]]; then
+    if [[ -d "$EXAMPLES_DIR/$example" && -f "$EXAMPLES_DIR/$example/config.json" ]]; then
         run_example "$example"
     else
         echo "Unknown example: $example" >&2

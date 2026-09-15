@@ -107,7 +107,7 @@ simulator resolve from `astra-sim/`, not the repo root. Paths to `configs/`, `wo
 
 All modules below live under `serving/core/`. Imports inside the
 subpackage use relative form (`from .X import ...`); external callers
-use `from serving.core.X import ...`.
+use `from llmservingsim.serving.core.X import ...`.
 
 ### `request.py`
 Defines the `Request` and `Batch` data classes. Tracks per-request state and latency

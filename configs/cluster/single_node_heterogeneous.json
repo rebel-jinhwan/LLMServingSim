@@ -14,11 +14,6 @@
         {
           "model_name": "Qwen/Qwen3-32B",
           "hardware": "RTXPRO6000",
-          "npu_mem": {
-            "mem_size": 96,
-            "mem_bw": 1597,
-            "mem_latency": 0
-          },
           "num_npus": 2,
           "tp_size": 2,
           "pd_type": "prefill",
@@ -30,11 +25,6 @@
         {
           "model_name": "Qwen/Qwen3-32B",
           "hardware": "RTXPRO6000",
-          "npu_mem": {
-            "mem_size": 96,
-            "mem_bw": 1597,
-            "mem_latency": 0
-          },
           "num_npus": 2,
           "tp_size": 2,
           "pd_type": "decode",

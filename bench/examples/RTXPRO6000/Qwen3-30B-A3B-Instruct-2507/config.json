@@ -15,9 +15,6 @@
                     "model_name": "Qwen/Qwen3-30B-A3B-Instruct-2507",
                     "hardware": "RTXPRO6000",
                     "npu_mem": {
-                        "mem_size": 96,
-                        "mem_bw": 1597,
-                        "mem_latency": 0,
                         "mem_util": 0.9
                     },
                     "num_npus": 1,
@@ -30,9 +27,6 @@
                     "model_name": "Qwen/Qwen3-30B-A3B-Instruct-2507",
                     "hardware": "RTXPRO6000",
                     "npu_mem": {
-                        "mem_size": 96,
-                        "mem_bw": 1597,
-                        "mem_latency": 0,
                     "mem_util": 0.9
                     },
                     "num_npus": 1,
