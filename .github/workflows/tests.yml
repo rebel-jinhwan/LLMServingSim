@@ -1,0 +1,31 @@
+name: Tests
+
+# The unit checks under tests/. They need the simulator's Python dependencies
+# but no GPU, no NPU, no vLLM and no ASTRA-Sim build, so they run on a stock
+# GitHub runner in seconds. The simulator's own behaviour check is
+# ./llmservingsim/serving/validate.sh, which does need all of that and stays a
+# local, pre-PR step.
+
+# Once per change: pull_request covers the PR, push covers the default branch
+# after it merges. Leaving push unfiltered would run both on every PR branch.
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # No submodules: nothing under tests/ reaches ASTRA-Sim.
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      # The `dev` extra is where pytest is pinned; the runtime dependencies
+      # come with it, and the block pool and KV cache manager need them.
+      - run: pip install -e '.[dev]'
+
+      - run: pytest

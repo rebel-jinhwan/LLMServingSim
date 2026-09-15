@@ -63,6 +63,16 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
   `get_kv(1) * num_npus` and works before any `MemoryModel` exists
 
 ### Changed
+- Every self-check moved into `tests/` and runs under **pytest**: the block
+  pool, the tiered KV cache manager and model config loading. They were
+  `__main__` blocks and `_selftest()` functions inside the modules they checked
+  (`python3 -m llmservingsim.serving.core.block_pool`, ...), each with its own
+  entry point to remember. Plain `test_*()` functions that assert — no fixtures,
+  no base classes; `tests/conftest.py` puts the repository root on `sys.path`,
+  so no `PYTHONPATH` is needed. `llmservingsim/serving/core/logger.py`'s
+  `__main__` block became `tests/demo_logger.py`, which is not a test: it prints
+  every logger surface at once, for looking at. Also deletes a `main()` in
+  `scheduler.py` that did nothing.
 - **The Python packages moved under an `llmservingsim/` namespace.** `serving/`,
   `profiler/`, `bench/` and `workloads/` are now
   `llmservingsim/{serving,profiler,bench,workloads}/`, and every entry point
