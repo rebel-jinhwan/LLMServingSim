@@ -193,11 +193,11 @@ A minimal step-granularity platform:
 ```python
 from platforms.profile import PlatformProfile
 
-class AcmeProfile(PlatformProfile):
+class ExampleProfile(PlatformProfile):
     TP_EMULATION = False
 
     def device_info(self):
-        return {"gpu": acme.device_name(0)}
+        return {"gpu": example_sdk.device_name(0)}
 
     def measure(self, run_forward, iterations, catalog_slice):
         ...  # time run_forward() and return one TimingSample("step", ...) dict
@@ -205,7 +205,7 @@ class AcmeProfile(PlatformProfile):
     def step_grid(self, args, limits):
         ...  # yield the Shots the runner can actually execute
 
-PROFILE = AcmeProfile()
+PROFILE = ExampleProfile()
 ```
 
 The loader refuses a `PROFILE` that is not a `PlatformProfile`, and a
