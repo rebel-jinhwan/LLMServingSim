@@ -33,11 +33,11 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING, Any
 
 from rich.console import Console
 from rich.logging import RichHandler
@@ -45,7 +45,7 @@ from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
     Progress,
-    SpinnerColumn,
+    TaskID,
     TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
@@ -98,6 +98,7 @@ _configured = False
 
 # --- public API -------------------------------------------------------------
 
+
 def configure(level: int | str = logging.WARNING) -> None:
     """Initialize the profiler logger.
 
@@ -142,8 +143,15 @@ def configure(level: int | str = logging.WARNING) -> None:
     # Anything quieter → clamp vLLM to ERROR so its startup banner doesn't
     # drown our own output.
     vllm_level = logging.DEBUG if level <= logging.DEBUG else logging.ERROR
-    for name in ("vllm", "vllm.engine", "vllm.worker", "vllm.executor",
-                 "vllm.config", "vllm.model_executor", "vllm.distributed"):
+    for name in (
+        "vllm",
+        "vllm.engine",
+        "vllm.worker",
+        "vllm.executor",
+        "vllm.config",
+        "vllm.model_executor",
+        "vllm.distributed",
+    ):
         logging.getLogger(name).setLevel(vllm_level)
 
 
@@ -172,6 +180,7 @@ def capture_stdio() -> Iterator[None]:
     saved_stderr = os.dup(2)
     # Open a tmpfile to collect captured output.
     import tempfile
+
     buf = tempfile.TemporaryFile(mode="w+b")
     try:
         # Point fd 1 and 2 at the buffer.
@@ -186,8 +195,7 @@ def capture_stdio() -> Iterator[None]:
             buf.seek(0)
             captured = buf.read().decode(errors="replace")
             if captured.strip():
-                _logger.error("Captured vLLM stdio before failure:\n%s",
-                              captured)
+                _logger.error("Captured vLLM stdio before failure:\n%s", captured)
             raise
     finally:
         # Always restore original fds.
@@ -200,23 +208,24 @@ def capture_stdio() -> Iterator[None]:
 
 # --- convenience wrappers ---------------------------------------------------
 
-def info(msg: str, *args, **kw) -> None:
+
+def info(msg: str, *args: Any, **kw: Any) -> None:
     _logger.info(msg, *args, **kw)
 
 
-def warning(msg: str, *args, **kw) -> None:
+def warning(msg: str, *args: Any, **kw: Any) -> None:
     _logger.warning(msg, *args, **kw)
 
 
-def error(msg: str, *args, **kw) -> None:
+def error(msg: str, *args: Any, **kw: Any) -> None:
     _logger.error(msg, *args, **kw)
 
 
-def debug(msg: str, *args, **kw) -> None:
+def debug(msg: str, *args: Any, **kw: Any) -> None:
     _logger.debug(msg, *args, **kw)
 
 
-def success(msg: str, *args, **kw) -> None:
+def success(msg: str, *args: Any, **kw: Any) -> None:
     """A log line tagged as 'SUCCESS'.
 
     Python's logging module has no SUCCESS level. We emit at INFO with
@@ -228,11 +237,11 @@ def success(msg: str, *args, **kw) -> None:
 
 # --- high-level display helpers --------------------------------------------
 
-def banner(args: "ProfileArgs", root: Path) -> None:
+
+def banner(args: ProfileArgs, root: Path) -> None:
     """Print the big "here's what we're about to do" header at run start."""
     _console.rule(
-        f"[bold cyan]Profiling {args.model} on {args.hardware}[/] "
-        f"([dim]{args.architecture}[/])"
+        f"[bold cyan]Profiling {args.model} on {args.hardware}[/] ([dim]{args.architecture}[/])"
     )
     info("Variant: [bold]%s[/]", args.effective_variant)
     info("TP degrees: %s", args.tp_degrees)
@@ -266,7 +275,7 @@ def stage(title: str) -> Iterator[None]:
 class Bar:
     """Thin handle around rich's ``TaskID`` so callers don't import rich."""
 
-    def __init__(self, progress: Progress, task_id):
+    def __init__(self, progress: Progress, task_id: TaskID) -> None:
         self._progress = progress
         self._task_id = task_id
 

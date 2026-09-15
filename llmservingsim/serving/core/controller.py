@@ -1,4 +1,5 @@
 import re
+
 from .logger import get_logger
 
 # ASTRA-Sim's per-iteration report, the one line of its stdout the frontend
@@ -10,14 +11,13 @@ _ITERATION_RE = re.compile(
 )
 
 
-class Controller():
+class Controller:
     def __init__(self, total_num):
         self.end_dict = {}
         self.total_num = total_num
         self.logger = get_logger(self.__class__)
         for i in range(total_num):
             self.end_dict[i] = -1
-
 
     def read_wait(self, p):
         """Read ASTRA-Sim's stdout up to the "Waiting" prompt.
@@ -36,18 +36,21 @@ class Controller():
         return out
 
     def check_end(self, p):
-        out = ["",""]
-        while out[-2] != "All Request Has Been Exited\n" and out[-2] != "ERROR: Some Requests Remain\n":
+        out = ["", ""]
+        while (
+            out[-2] != "All Request Has Been Exited\n"
+            and out[-2] != "ERROR: Some Requests Remain\n"
+        ):
             out.append(p.stdout.readline())
             p.stdout.flush()
-        print(out[-4], end='')
-        print(out[-2], end='')
+        print(out[-4], end="")
+        print(out[-2], end="")
         return out
 
     def write_flush(self, p, input):
         # For debugging
         # print(input)
-        p.stdin.write(input+'\n')
+        p.stdin.write(input + "\n")
         p.stdin.flush()
         return
 
@@ -68,5 +71,5 @@ class Controller():
                     com_cycle,
                 )
                 self.end_dict[sys] = id
-            return {'sys': sys, 'id': id, 'cycle': cycle}
+            return {"sys": sys, "id": id, "cycle": cycle}
         return

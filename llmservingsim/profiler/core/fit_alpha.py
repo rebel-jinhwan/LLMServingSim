@@ -68,13 +68,14 @@ sweep (e.g. ``max_num_seqs`` to 512 or ``attention_max_kv`` to 65536)
 lights up proper resolution on the affected axis without any code
 change in either component.
 """
+
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 import pandas as pd
-
 
 # skew_rate bucketisation — fixed because the axis is normalised to
 # [0, 1] regardless of profile sweep width. ``skew_rate`` is defined
@@ -101,7 +102,14 @@ _SKEW_RATE_LABELS = ("sr<=5%", "sr<=15%", "sr<=40%", "sr<=70%", "sr>70%")
 # ---------------------------------------------------------------------------
 _DEFAULT_N_BINS = (0, 2, 4, 8, 16, 32, 64, 128, 1_000_000)
 _DEFAULT_N_LABELS = (
-    "n<=2", "n<=4", "n<=8", "n<=16", "n<=32", "n<=64", "n<=128", "n>128",
+    "n<=2",
+    "n<=4",
+    "n<=8",
+    "n<=16",
+    "n<=32",
+    "n<=64",
+    "n<=128",
+    "n>128",
 )
 _DEFAULT_KV_BIG_BINS = (0, 1024, 4096, 16384, 1_000_000_000)
 _DEFAULT_KV_BIG_LABELS = ("kvB<=1k", "kvB<=4k", "kvB<=16k", "kvB>16k")
@@ -162,9 +170,7 @@ def _derive_kp_axis(df: pd.DataFrame) -> tuple[tuple, tuple]:
     if not vals:
         return _DEFAULT_KP_BINS, _DEFAULT_KP_LABELS
     bins = (-1, 0) + tuple(vals) + (1_000_000_000,)
-    labels = ("kp=0",) + tuple(f"kp<={_short_kv(v)}" for v in vals) + (
-        f"kp>{_short_kv(vals[-1])}",
-    )
+    labels = ("kp=0",) + tuple(f"kp<={_short_kv(v)}" for v in vals) + (f"kp>{_short_kv(vals[-1])}",)
     return bins, labels
 
 
@@ -194,9 +200,7 @@ def _derive_kv_big_axis(df: pd.DataFrame) -> tuple[tuple, tuple]:
     if edges[-1] < kv_max:
         edges.append(kv_max)
     bins = (0,) + tuple(edges) + (1_000_000_000,)
-    labels = tuple(f"kvB<={_short_kv(e)}" for e in edges) + (
-        f"kvB>{_short_kv(edges[-1])}",
-    )
+    labels = tuple(f"kvB<={_short_kv(e)}" for e in edges) + (f"kvB>{_short_kv(edges[-1])}",)
     return bins, labels
 
 
@@ -233,17 +237,25 @@ def _bucket_key(axes: Mapping[str, Any], pc, n, skew_rate, kv_big, kp) -> str:
     label strings so the CSV rows resolve cleanly either way.
     """
     n_label = _bucket_label(
-        tuple(axes["n_bins"]), tuple(axes["n_labels"]), int(n),
+        tuple(axes["n_bins"]),
+        tuple(axes["n_labels"]),
+        int(n),
     )
     sr = max(0.0, min(1.0, float(skew_rate)))
     sr_label = _bucket_label(
-        tuple(axes["skew_rate_bins"]), tuple(axes["skew_rate_labels"]), sr,
+        tuple(axes["skew_rate_bins"]),
+        tuple(axes["skew_rate_labels"]),
+        sr,
     )
     kvb_label = _bucket_label(
-        tuple(axes["kv_big_bins"]), tuple(axes["kv_big_labels"]), int(kv_big),
+        tuple(axes["kv_big_bins"]),
+        tuple(axes["kv_big_labels"]),
+        int(kv_big),
     )
     kp_label = _bucket_label(
-        tuple(axes["kp_bins"]), tuple(axes["kp_labels"]), int(kp),
+        tuple(axes["kp_bins"]),
+        tuple(axes["kp_labels"]),
+        int(kp),
     )
     return f"pc={int(pc)}|{n_label}|{sr_label}|{kvb_label}|{kp_label}"
 
@@ -270,7 +282,7 @@ def _fit_constant_wls(dtm: pd.Series, dts: pd.Series) -> float:
     signal (every dtm is zero).
     """
     num = float((dtm * dts).sum())
-    den = float((dtm ** 2).sum())
+    den = float((dtm**2).sum())
     return num / den if den > 0 else 0.0
 
 
@@ -350,9 +362,7 @@ def fit_alpha(skew_csv: Path) -> dict[str, Any]:
     return out
 
 
-def fit_alpha_per_tp(
-    variant_root: Path, tp_degrees: list[int]
-) -> dict[str, Any]:
+def fit_alpha_per_tp(variant_root: Path, tp_degrees: list[int]) -> dict[str, Any]:
     """Walk every ``tp{N}/skew.csv`` under ``variant_root`` and fit.
 
     Returns a meta-friendly dict with a ``per_tp`` map. TPs whose

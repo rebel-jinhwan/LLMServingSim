@@ -1,0 +1,35 @@
+# Runs the same two tools CI runs, before the commit instead of after it.
+#
+#   pip install -e '.[dev]' && pre-commit install
+#
+# The hooks are `repo: local` with `language: system`, so they use the ruff and
+# mypy from that install: the versions are pinned once, in pyproject.toml's
+# `dev` extra, and there is nothing here to keep in sync. Both tools read their
+# configuration from pyproject.toml too ([tool.ruff], [tool.mypy]).
+
+repos:
+  - repo: local
+    hooks:
+      # --force-exclude so the extend-exclude list in pyproject.toml still
+      # applies to the paths pre-commit hands in explicitly.
+      - id: ruff-format
+        name: ruff format
+        entry: ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
+
+      - id: ruff-check
+        name: ruff check
+        entry: ruff check --force-exclude --fix
+        language: system
+        types_or: [python, pyi]
+
+      # mypy is configured per module in pyproject.toml, so it runs over the
+      # whole project rather than over the staged files -- the same invocation
+      # CI makes.
+      - id: mypy
+        name: mypy
+        entry: mypy
+        language: system
+        pass_filenames: false
+        always_run: true

@@ -1,8 +1,7 @@
-import os
-from .utils import get_config
-from .block_pool import Device, BlockPool, PrefixCacheStats
-from .kv_cache_manager import TieredKVCacheManager, request_block_hashes
+from .block_pool import BlockPool, Device
+from .kv_cache_manager import TieredKVCacheManager
 from .logger import get_logger
+from .utils import get_config
 
 GB_TO_BYTE = 1024 * 1024 * 1024
 MB_TO_BYTE = 1024 * 1024
@@ -16,7 +15,7 @@ KB_TO_BYTE = 1024
 LOWER_TIER_CHUNK_TOKENS = 256
 
 
-class MemoryModel():
+class MemoryModel:
     """Per-instance memory accounting, over one block pool per tier.
 
     Static sizing math (weights, per-layer tensor shapes, KV bytes per token)
@@ -26,7 +25,27 @@ class MemoryModel():
     an allocation that cannot be satisfied says so in the call that asks.
     """
 
-    def __init__(self, model, instance_id, node_id, num_npus, tp_size, npu_mem, cpu_mem, block_size, fp, enable_prefix_caching, enable_prefix_sharing, prefix_pool, prefix_storage, cxl_mem=0, ep_size=1, pp_size=1, kv_cache_dtype='auto', npu_memory_utilization=1.0):
+    def __init__(
+        self,
+        model,
+        instance_id,
+        node_id,
+        num_npus,
+        tp_size,
+        npu_mem,
+        cpu_mem,
+        block_size,
+        fp,
+        enable_prefix_caching,
+        enable_prefix_sharing,
+        prefix_pool,
+        prefix_storage,
+        cxl_mem=0,
+        ep_size=1,
+        pp_size=1,
+        kv_cache_dtype="auto",
+        npu_memory_utilization=1.0,
+    ):
         self.model = model
         self.node_id = node_id
         self.instance_id = instance_id
@@ -34,43 +53,47 @@ class MemoryModel():
         self.tp_size = tp_size
         self.pp_size = pp_size
         self.ep_size = ep_size
-        self.npu_mem = npu_mem * GB_TO_BYTE # GB -> Byte
-        self.cpu_mem = cpu_mem * GB_TO_BYTE # GB -> Byte
+        self.npu_mem = npu_mem * GB_TO_BYTE  # GB -> Byte
+        self.cpu_mem = cpu_mem * GB_TO_BYTE  # GB -> Byte
         self.cxl_mem = cxl_mem * GB_TO_BYTE
         self.block_size = block_size
-        self.fp = fp // 8 # bit -> byte of floating point
-        self.kv_fp = 1 if kv_cache_dtype == 'fp8' else self.fp  # KV cache bytes per element
+        self.fp = fp // 8  # bit -> byte of floating point
+        self.kv_fp = 1 if kv_cache_dtype == "fp8" else self.fp  # KV cache bytes per element
         self.enable_prefix_caching = enable_prefix_caching
         self.enable_prefix_sharing = enable_prefix_sharing
         self.prefix_storage = prefix_storage
         self.npu_memory_utilization = npu_memory_utilization
 
         self.config = get_config(model)
-        self.n_embd = self.config['hidden_size']
-        self.n_layer = self.config['num_hidden_layers']
-        self.n_head = self.config['num_attention_heads']
-        self.head_dim = self.config.get('head_dim', self.n_embd // self.n_head)
-        self.kv_head = self.config.get("num_key_value_heads", self.n_head)  # fallback to n_head if not defined
-        self.q_dim = self.n_head * self.head_dim       # total Q projection output dim
-        self.kv_dim = self.kv_head * self.head_dim     # total KV projection output dim
-        self.vocab_size = self.config['vocab_size']
+        self.n_embd = self.config["hidden_size"]
+        self.n_layer = self.config["num_hidden_layers"]
+        self.n_head = self.config["num_attention_heads"]
+        self.head_dim = self.config.get("head_dim", self.n_embd // self.n_head)
+        self.kv_head = self.config.get(
+            "num_key_value_heads", self.n_head
+        )  # fallback to n_head if not defined
+        self.q_dim = self.n_head * self.head_dim  # total Q projection output dim
+        self.kv_dim = self.kv_head * self.head_dim  # total KV projection output dim
+        self.vocab_size = self.config["vocab_size"]
         # Accept either the Mistral-style ``num_local_experts`` or the
         # HF/Qwen-style ``num_experts`` key — profiler configs track
         # upstream HF naming which varies per family.
-        self.is_moe = 'num_local_experts' in self.config or 'num_experts' in self.config
+        self.is_moe = "num_local_experts" in self.config or "num_experts" in self.config
 
         self.logger = get_logger(self.__class__, node_id=node_id, instance_id=instance_id)
 
-        self.weight = self.get_weight() # assume weight is loaded
+        self.weight = self.get_weight()  # assume weight is loaded
         if self.weight > self.npu_mem:
-            raise RuntimeError(f"[MemoryModel] [node={self.node_id},inst={self.instance_id}]: Model size {self.weight*self.num_npus//GB_TO_BYTE}GB exceeds total NPU memory {self.npu_mem*self.num_npus//GB_TO_BYTE}GB")
+            raise RuntimeError(
+                f"[MemoryModel] [node={self.node_id},inst={self.instance_id}]: Model size {self.weight * self.num_npus // GB_TO_BYTE}GB exceeds total NPU memory {self.npu_mem * self.num_npus // GB_TO_BYTE}GB"
+            )
 
         # Non-KV bytes the instance holds outside the pools: model weights, plus
         # anything --enable-local-offloading or the PIM model loads explicitly.
         self._npu_reserved = self.weight
         self._cpu_reserved = 0
 
-        self._bytes_per_token = self.get_kv(1)              # per rank
+        self._bytes_per_token = self.get_kv(1)  # per rank
         self._npu_bytes_per_block = self._bytes_per_token * block_size
         self._cluster_bytes_per_token = self._bytes_per_token * self.num_npus
 
@@ -94,9 +117,13 @@ class MemoryModel():
         npu_blocks = kv_bytes // self._npu_bytes_per_block
 
         self.npu_pool = BlockPool(
-            Device.NPU, int(npu_blocks), block_size, self._npu_bytes_per_block,
+            Device.NPU,
+            int(npu_blocks),
+            block_size,
+            self._npu_bytes_per_block,
             enable_caching=enable_prefix_caching,
-            node_id=node_id, instance_id=instance_id,
+            node_id=node_id,
+            instance_id=instance_id,
         )
         self.logger.info(
             "NPU: KV cache %d blocks (%d tokens, %.2fMB) at utilization %.2f",
@@ -117,7 +144,9 @@ class MemoryModel():
             self.lower_pools.append(self.storage_pool)
 
         self.kv = TieredKVCacheManager(
-            block_size, self.npu_pool, self.lower_pools,
+            block_size,
+            self.npu_pool,
+            self.lower_pools,
             enable_caching=enable_prefix_caching,
         )
 
@@ -149,10 +178,17 @@ class MemoryModel():
         elif prefix_storage == Device.CXL:
             capacity = self.cxl_mem
         else:
-            raise RuntimeError(f"[MemoryModel] [node_id={self.node_id},inst={self.instance_id}]: Device {prefix_storage} is currently not supported as a second tier prefix cache storage")
-        return build_prefix_pool(prefix_storage, capacity, self.block_size,
-                                 self._cluster_bytes_per_token,
-                                 node_id=self.node_id, instance_id=self.instance_id)
+            raise RuntimeError(
+                f"[MemoryModel] [node_id={self.node_id},inst={self.instance_id}]: Device {prefix_storage} is currently not supported as a second tier prefix cache storage"
+            )
+        return build_prefix_pool(
+            prefix_storage,
+            capacity,
+            self.block_size,
+            self._cluster_bytes_per_token,
+            node_id=self.node_id,
+            instance_id=self.instance_id,
+        )
 
     def get_weight(self):
         """Per-GPU model weight in bytes.
@@ -170,12 +206,12 @@ class MemoryModel():
         fp = self.fp
         weight = 0
 
-        _, embedding, _ = calculate_sizes(self.model, 'embedding', 1, parallel=tp, fp=fp)
+        _, embedding, _ = calculate_sizes(self.model, "embedding", 1, parallel=tp, fp=fp)
         weight += embedding
         weight += self._get_weight_per_block(tp, ep, fp) * (self.n_layer // pp)
-        _, ln_f, _ = calculate_sizes(self.model, 'final_layernorm', 1, parallel=tp, fp=fp)
+        _, ln_f, _ = calculate_sizes(self.model, "final_layernorm", 1, parallel=tp, fp=fp)
         weight += ln_f
-        _, lm_head, _ = calculate_sizes(self.model, 'lm_head', 1, parallel=tp, fp=fp)
+        _, lm_head, _ = calculate_sizes(self.model, "lm_head", 1, parallel=tp, fp=fp)
         weight += lm_head
 
         self.logger.info(
@@ -187,20 +223,20 @@ class MemoryModel():
     def _get_weight_per_block(self, tp, ep, fp):
         """Per-block weight: dense layers use TP, MoE experts use EP."""
         block_weight = 0
-        _, ln_w, _ = calculate_sizes(self.model, 'layernorm', 1, parallel=tp, fp=fp)
+        _, ln_w, _ = calculate_sizes(self.model, "layernorm", 1, parallel=tp, fp=fp)
         block_weight += ln_w  # input layernorm
-        _, qkv_w, _ = calculate_sizes(self.model, 'qkv_proj', 1, parallel=tp, fp=fp)
+        _, qkv_w, _ = calculate_sizes(self.model, "qkv_proj", 1, parallel=tp, fp=fp)
         block_weight += qkv_w
-        _, o_w, _ = calculate_sizes(self.model, 'o_proj', 1, parallel=tp, fp=fp)
+        _, o_w, _ = calculate_sizes(self.model, "o_proj", 1, parallel=tp, fp=fp)
         block_weight += o_w
         block_weight += ln_w  # post layernorm (same weight size)
         if self.is_moe:
-            _, moe_w, _ = calculate_sizes(self.model, 'moe', 1, parallel=ep, fp=fp)
+            _, moe_w, _ = calculate_sizes(self.model, "moe", 1, parallel=ep, fp=fp)
             block_weight += moe_w
         else:
-            _, ffn1_w, _ = calculate_sizes(self.model, 'gate_up_proj', 1, parallel=tp, fp=fp)
+            _, ffn1_w, _ = calculate_sizes(self.model, "gate_up_proj", 1, parallel=tp, fp=fp)
             block_weight += ffn1_w
-            _, ffn2_w, _ = calculate_sizes(self.model, 'down_proj', 1, parallel=tp, fp=fp)
+            _, ffn2_w, _ = calculate_sizes(self.model, "down_proj", 1, parallel=tp, fp=fp)
             block_weight += ffn2_w
         return block_weight
 
@@ -297,7 +333,9 @@ class MemoryModel():
         elif device == Device.CXL:
             self._cpu_reserved += size
         else:
-            raise RuntimeError(f"[MemoryModel] [node_id={self.node_id},inst={self.instance_id}] Trying to allocate in unsupported device {device}")
+            raise RuntimeError(
+                f"[MemoryModel] [node_id={self.node_id},inst={self.instance_id}] Trying to allocate in unsupported device {device}"
+            )
 
     def free(self, size, device):
         if size <= 0:
@@ -315,7 +353,9 @@ class MemoryModel():
                 )
             self._cpu_reserved -= size
         else:
-            raise RuntimeError(f"[MemoryModel] [node_id={self.node_id},inst={self.instance_id}] Trying to free in unsupported device {device}")
+            raise RuntimeError(
+                f"[MemoryModel] [node_id={self.node_id},inst={self.instance_id}] Trying to free in unsupported device {device}"
+            )
 
     def is_avail(self, size, device):
         if device == Device.NPU:
@@ -324,7 +364,9 @@ class MemoryModel():
             return self.cpu_mem - self.cpu_used >= size
         elif device == Device.CXL:
             return self.cxl_mem - self.cpu_used >= size
-        raise RuntimeError(f"[MemoryModel] [node_id={self.node_id},inst={self.instance_id}] Trying to check available size of unsupported device {device}")
+        raise RuntimeError(
+            f"[MemoryModel] [node_id={self.node_id},inst={self.instance_id}] Trying to check available size of unsupported device {device}"
+        )
 
     # -------------------- prefix cache statistics --------------------
 
@@ -341,7 +383,8 @@ class MemoryModel():
             req._prefix_npu_stats_counted = True
         if self.storage_pool is not None and not req._prefix_storage_stats_counted:
             self.storage_pool.stats.record(
-                req.original_input, max(0, req.storage_cache_hit - req.npu_cache_hit))
+                req.original_input, max(0, req.storage_cache_hit - req.npu_cache_hit)
+            )
             req._prefix_storage_stats_counted = True
 
     def return_prefix_info(self):
@@ -380,8 +423,9 @@ class MemoryModel():
         return not leaked
 
 
-def build_prefix_pool(tier, capacity_bytes, npu_block_size, cluster_bytes_per_token,
-                      node_id=None, instance_id=None):
+def build_prefix_pool(
+    tier, capacity_bytes, npu_block_size, cluster_bytes_per_token, node_id=None, instance_id=None
+):
     """A victim-tier :class:`BlockPool` sized from a byte capacity.
 
     Also used by ``__main__`` to build pools shared across instances, before any
@@ -389,8 +433,7 @@ def build_prefix_pool(tier, capacity_bytes, npu_block_size, cluster_bytes_per_to
     to a multiple of the NPU block size, so the tier can key on every Nth hash of
     the same chain. Bytes are full-cluster: a host copy holds every rank's shard.
     """
-    chunk = max(npu_block_size,
-                (LOWER_TIER_CHUNK_TOKENS // npu_block_size) * npu_block_size)
+    chunk = max(npu_block_size, (LOWER_TIER_CHUNK_TOKENS // npu_block_size) * npu_block_size)
     bytes_per_block = cluster_bytes_per_token * chunk
     num_blocks = int(capacity_bytes // bytes_per_block)
     if num_blocks < 1:
@@ -399,11 +442,18 @@ def build_prefix_pool(tier, capacity_bytes, npu_block_size, cluster_bytes_per_to
             f"enough for one {chunk}-token chunk "
             f"({bytes_per_block / MB_TO_BYTE:.2f}MB)"
         )
-    return BlockPool(tier, num_blocks, chunk, bytes_per_block,
-                     enable_caching=True, node_id=node_id, instance_id=instance_id)
+    return BlockPool(
+        tier,
+        num_blocks,
+        chunk,
+        bytes_per_block,
+        enable_caching=True,
+        node_id=node_id,
+        instance_id=instance_id,
+    )
 
 
-def full_cluster_kv_bytes_per_token(model, fp, kv_cache_dtype='auto'):
+def full_cluster_kv_bytes_per_token(model, fp, kv_cache_dtype="auto"):
     """Bytes of KV cache per token aggregated over the full TP cluster.
 
     Mirrors MemoryModel.get_kv(1) * num_npus but computes directly, avoiding
@@ -412,13 +462,13 @@ def full_cluster_kv_bytes_per_token(model, fp, kv_cache_dtype='auto'):
     for the KV cache regardless of weight dtype.
     """
     config = get_config(model)
-    n_embd = config['hidden_size']
-    n_head = config['num_attention_heads']
-    head_dim = config.get('head_dim', n_embd // n_head)
-    kv_head = config.get('num_key_value_heads', n_head)
+    n_embd = config["hidden_size"]
+    n_head = config["num_attention_heads"]
+    head_dim = config.get("head_dim", n_embd // n_head)
+    kv_head = config.get("num_key_value_heads", n_head)
     kv_dim = kv_head * head_dim
-    n_layer = config['num_hidden_layers']
-    kv_fp = 1 if kv_cache_dtype == 'fp8' else fp // 8
+    n_layer = config["num_hidden_layers"]
+    kv_fp = 1 if kv_cache_dtype == "fp8" else fp // 8
     # 2 (K + V) * kv_dim * n_layer * bytes_per_elem
     return 2 * kv_dim * n_layer * kv_fp
 
@@ -432,20 +482,20 @@ def calculate_sizes(model, layer_name, length, kv_len=None, pim=False, parallel=
             For dense layers this is TP; for MoE experts this is EP.
     """
     config = get_config(model)
-    n_embd = config['hidden_size']
-    n_head = config['num_attention_heads']
-    head_dim = config.get('head_dim', n_embd // n_head)
-    vocab_size = config['vocab_size']
+    n_embd = config["hidden_size"]
+    n_head = config["num_attention_heads"]
+    head_dim = config.get("head_dim", n_embd // n_head)
+    vocab_size = config["vocab_size"]
     kv_head = config.get("num_key_value_heads", n_head)  # fallback to n_head if not defined
-    q_dim = n_head * head_dim       # total Q projection output dim
-    kv_dim = kv_head * head_dim     # total KV projection output dim
+    q_dim = n_head * head_dim  # total Q projection output dim
+    kv_dim = kv_head * head_dim  # total KV projection output dim
     ffn_dim = config.get("intermediate_size", config.get("ffn_dim"))  # dense FFN dim
-    moe_ffn_dim = config.get("moe_intermediate_size", ffn_dim)  # per-expert FFN dim (may differ from dense)
+    moe_ffn_dim = config.get(
+        "moe_intermediate_size", ffn_dim
+    )  # per-expert FFN dim (may differ from dense)
     # Same both-name fallback as MemoryModel.__init__ — HF / Qwen use
     # ``num_experts`` while Mistral uses ``num_local_experts``.
-    num_local_experts = config.get(
-        "num_local_experts", config.get("num_experts", 1)
-    )
+    num_local_experts = config.get("num_local_experts", config.get("num_experts", 1))
 
     p = max(int(parallel), 1)
 
@@ -481,17 +531,13 @@ def calculate_sizes(model, layer_name, length, kv_len=None, pim=False, parallel=
 
     elif layer_name == "attention":
         if not pim:
-            input_size = (
-                (n_head // p) * length * head_dim * fp +
-                (kv_head // p) * kv_len * head_dim * fp * 2
-            )
+            input_size = (n_head // p) * length * head_dim * fp + (
+                kv_head // p
+            ) * kv_len * head_dim * fp * 2
             weight_size = 0
             output_size = (n_head // p) * length * head_dim * fp
         else:
-            input_size = (
-                (n_head // p) * 1 * head_dim * fp +
-                (kv_head // p) * 1 * head_dim * fp * 2
-            )
+            input_size = (n_head // p) * 1 * head_dim * fp + (kv_head // p) * 1 * head_dim * fp * 2
             weight_size = 0
             output_size = (n_head // p) * 1 * head_dim * fp
 
@@ -529,8 +575,10 @@ def calculate_sizes(model, layer_name, length, kv_len=None, pim=False, parallel=
     elif layer_name == "moe":
         experts_per_rank = num_local_experts // p
         input_size = length * n_embd * fp
-        weight_size = (n_embd * num_local_experts * fp  # gate (replicated)
-                     + experts_per_rank * 3 * n_embd * moe_ffn_dim * fp)  # local experts
+        weight_size = (
+            n_embd * num_local_experts * fp  # gate (replicated)
+            + experts_per_rank * 3 * n_embd * moe_ffn_dim * fp
+        )  # local experts
         output_size = length * n_embd * fp
 
     # ----------------- LM Head -----------------

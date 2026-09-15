@@ -21,10 +21,10 @@ from vllm.v1.metrics.loggers import StatLoggerBase
 
 @dataclass
 class _Sample:
-    t: float                    # seconds since logger creation
+    t: float  # seconds since logger creation
     num_running: int
     num_waiting: int
-    num_prompt_tokens: int      # tokens prefilled this iteration
+    num_prompt_tokens: int  # tokens prefilled this iteration
     num_generation_tokens: int  # tokens decoded this iteration
     kv_cache_pct: float
     engine_idx: int
@@ -70,15 +70,17 @@ class BenchStatLogger(StatLoggerBase):
             prompt_toks = getattr(iteration_stats, "num_prompt_tokens", 0)
             gen_toks = getattr(iteration_stats, "num_generation_tokens", 0)
 
-        BenchStatLogger.samples.append(_Sample(
-            t=time.monotonic() - (BenchStatLogger._t0 or time.monotonic()),
-            num_running=running,
-            num_waiting=waiting,
-            num_prompt_tokens=prompt_toks,
-            num_generation_tokens=gen_toks,
-            kv_cache_pct=cache_pct,
-            engine_idx=engine_idx if engine_idx else self.engine_index,
-        ))
+        BenchStatLogger.samples.append(
+            _Sample(
+                t=time.monotonic() - (BenchStatLogger._t0 or time.monotonic()),
+                num_running=running,
+                num_waiting=waiting,
+                num_prompt_tokens=prompt_toks,
+                num_generation_tokens=gen_toks,
+                kv_cache_pct=cache_pct,
+                engine_idx=engine_idx if engine_idx else self.engine_index,
+            )
+        )
 
     def log_engine_initialized(self) -> None:
         pass
@@ -98,7 +100,7 @@ class BenchStatLogger(StatLoggerBase):
         """
         header = [
             "t",
-            "prompt_throughput",      # tokens / sec (over the tick)
+            "prompt_throughput",  # tokens / sec (over the tick)
             "gen_throughput",
             "running",
             "waiting",
@@ -128,26 +130,24 @@ class BenchStatLogger(StatLoggerBase):
             # iteration of each engine within the bucket.
             latest_per_engine: dict[int, _Sample] = {}
             for s in in_bucket:
-                if (
-                    s.engine_idx not in latest_per_engine
-                    or s.t > latest_per_engine[s.engine_idx].t
-                ):
+                if s.engine_idx not in latest_per_engine or s.t > latest_per_engine[s.engine_idx].t:
                     latest_per_engine[s.engine_idx] = s
             running = sum(s.num_running for s in latest_per_engine.values())
             waiting = sum(s.num_waiting for s in latest_per_engine.values())
-            cache_pct = (
-                sum(s.kv_cache_pct for s in latest_per_engine.values())
-                / max(1, len(latest_per_engine))
+            cache_pct = sum(s.kv_cache_pct for s in latest_per_engine.values()) / max(
+                1, len(latest_per_engine)
             )
 
-            rows.append([
-                round(t_hi, 3),
-                round(prompt_sum / tick_seconds, 1),
-                round(gen_sum / tick_seconds, 1),
-                running,
-                waiting,
-                round(cache_pct, 2),
-            ])
+            rows.append(
+                [
+                    round(t_hi, 3),
+                    round(prompt_sum / tick_seconds, 1),
+                    round(gen_sum / tick_seconds, 1),
+                    running,
+                    waiting,
+                    round(cache_pct, 2),
+                ]
+            )
             bucket_idx += 1
 
         return header, rows

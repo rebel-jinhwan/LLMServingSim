@@ -1,17 +1,22 @@
 import json
-import yaml
-import math
-import sys
 import os
 import shutil
-from .utils import get_config
-from .pim_model import PIMModel
-from .logger import get_logger
+import sys
 
-class FlowStyleList(list): pass
+import yaml
+
+from .logger import get_logger
+from .pim_model import PIMModel
+from .utils import get_config
+
+
+class FlowStyleList(list):
+    pass
+
 
 def represent_flowstyle_list(dumper, data):
-    return dumper.represent_sequence('tag:yaml.org,2002:seq', data, flow_style=True)
+    return dumper.represent_sequence("tag:yaml.org,2002:seq", data, flow_style=True)
+
 
 yaml.add_representer(FlowStyleList, represent_flowstyle_list)
 
@@ -45,9 +50,7 @@ def _prepare_input_config_paths(astra_sim, inputs_root):
             )
         shutil.copyfile(default_system_config_path, system_config_path)
     elif not os.path.isfile(system_config_path):
-        raise FileNotFoundError(
-            f"ASTRA-Sim system config '{system_config_path}' not found."
-        )
+        raise FileNotFoundError(f"ASTRA-Sim system config '{system_config_path}' not found.")
 
     return inputs_root, network_config_path, system_config_path, memory_config_path
 
@@ -67,7 +70,7 @@ def _resolve_parallelism(instance, model_config):
     # Accept either the Mistral-style ``num_local_experts`` key or the
     # HF/Qwen3 ``num_experts`` key — HF naming varies per model family
     # and the profiler's configs track upstream.
-    is_moe = 'num_local_experts' in model_config or 'num_experts' in model_config
+    is_moe = "num_local_experts" in model_config or "num_experts" in model_config
 
     num_npus = instance.get("num_npus")
     tp_size = instance.get("tp_size")
@@ -86,7 +89,9 @@ def _resolve_parallelism(instance, model_config):
                 raise ValueError(f"num_npus ({num_npus}) not divisible by tp_size ({tp_size})")
             inferred_pp = num_npus // tp_size
             if pp_size != 1 and pp_size != inferred_pp:
-                raise ValueError(f"num_npus ({num_npus}) != tp_size ({tp_size}) * pp_size ({pp_size})")
+                raise ValueError(
+                    f"num_npus ({num_npus}) != tp_size ({tp_size}) * pp_size ({pp_size})"
+                )
             pp_size = inferred_pp
     elif num_npus is not None and tp_size is None:
         if num_npus % pp_size != 0:
@@ -106,7 +111,9 @@ def _resolve_parallelism(instance, model_config):
     if num_npus != tp_size * pp_size:
         raise ValueError(f"num_npus ({num_npus}) != tp_size ({tp_size}) * pp_size ({pp_size})")
     if tp_size < 1 or pp_size < 1 or ep_size < 1:
-        raise ValueError(f"Parallelism degrees must be >= 1: tp_size={tp_size}, pp_size={pp_size}, ep_size={ep_size}")
+        raise ValueError(
+            f"Parallelism degrees must be >= 1: tp_size={tp_size}, pp_size={pp_size}, ep_size={ep_size}"
+        )
     if dp_group is None and ep_size > tp_size:
         raise ValueError(f"ep_size ({ep_size}) > tp_size ({tp_size}) requires dp_group to be set")
     num_hidden_layers = model_config.get("num_hidden_layers")
@@ -116,13 +123,10 @@ def _resolve_parallelism(instance, model_config):
             f"({num_hidden_layers}); a pipeline stage cannot be empty"
         )
     if is_moe:
-        num_experts = model_config.get(
-            "num_local_experts", model_config.get("num_experts", 1)
-        )
+        num_experts = model_config.get("num_local_experts", model_config.get("num_experts", 1))
         if num_experts % ep_size != 0:
             raise ValueError(
-                f"ep_size ({ep_size}) must divide the model's expert count "
-                f"({num_experts})"
+                f"ep_size ({ep_size}) must divide the model's expert count ({num_experts})"
             )
 
     # Store resolved values back into instance
@@ -151,11 +155,17 @@ def _resolve_dp_groups(all_instances):
         pp0 = members[0]["pp_size"]
         for m in members[1:]:
             if m["tp_size"] != tp0:
-                raise ValueError(f"DP group '{group_name}': tp_size mismatch ({tp0} vs {m['tp_size']})")
+                raise ValueError(
+                    f"DP group '{group_name}': tp_size mismatch ({tp0} vs {m['tp_size']})"
+                )
             if m["ep_size"] != ep0:
-                raise ValueError(f"DP group '{group_name}': ep_size mismatch ({ep0} vs {m['ep_size']})")
+                raise ValueError(
+                    f"DP group '{group_name}': ep_size mismatch ({ep0} vs {m['ep_size']})"
+                )
             if m["pp_size"] != pp0:
-                raise ValueError(f"DP group '{group_name}': pp_size mismatch ({pp0} vs {m['pp_size']})")
+                raise ValueError(
+                    f"DP group '{group_name}': pp_size mismatch ({pp0} vs {m['pp_size']})"
+                )
 
         dp_size = len(members)
         if not members[0].get("is_moe", True):
@@ -170,9 +180,13 @@ def _resolve_dp_groups(all_instances):
             ep_total = ep0  # ep_size in config is the total EP degree across DP group
             local_ep = ep_total // dp_size
             if ep_total % dp_size != 0:
-                raise ValueError(f"DP group '{group_name}': ep_size ({ep_total}) not divisible by dp_group_size ({dp_size})")
+                raise ValueError(
+                    f"DP group '{group_name}': ep_size ({ep_total}) not divisible by dp_group_size ({dp_size})"
+                )
             if local_ep > tp0:
-                raise ValueError(f"DP group '{group_name}': local_ep ({local_ep}) > tp_size ({tp0})")
+                raise ValueError(
+                    f"DP group '{group_name}': local_ep ({local_ep}) > tp_size ({tp0})"
+                )
 
         # Topology dimensions for a DP group, innermost first:
         #   [tp_size] + ([pp_size] if pp > 1) + [dp_group_size]
@@ -248,18 +262,15 @@ def _compute_network_dims(instances):
         first_group = next(iter(dp_groups.values()))
         tp_size = first_group[0]["tp_size"]
         pp_size = first_group[0]["pp_size"]
-        dims = ([tp_size, pp_size, len(first_group)] if pp_size > 1
-                else [tp_size, len(first_group)])
+        dims = [tp_size, pp_size, len(first_group)] if pp_size > 1 else [tp_size, len(first_group)]
     else:
         # Independent instances: standard topology.
         total_npu = sum(
-            inst["num_npus"] if inst.get("pd_type") != "prefill"
-            else inst["num_npus"] * 2
+            inst["num_npus"] if inst.get("pd_type") != "prefill" else inst["num_npus"] * 2
             for inst in instances
         )
         total_pp = sum(
-            inst["pp_size"] if inst.get("pd_type") != "prefill"
-            else inst["pp_size"] * 2
+            inst["pp_size"] if inst.get("pd_type") != "prefill" else inst["pp_size"] * 2
             for inst in instances
         )
         num_instances = len(instances) + sum(
@@ -291,16 +302,13 @@ def _normalize_network_dim_values(raw_value, num_dims, field_name):
         values = [raw_value] * num_dims
     else:
         raise TypeError(
-            f"'{field_name}' must be a number or a list of numbers, "
-            f"got {type(raw_value).__name__}."
+            f"'{field_name}' must be a number or a list of numbers, got {type(raw_value).__name__}."
         )
 
     try:
         return FlowStyleList([float(v) for v in values])
     except (TypeError, ValueError) as exc:
-        raise TypeError(
-            f"'{field_name}' must contain only numeric values."
-        ) from exc
+        raise TypeError(f"'{field_name}' must contain only numeric values.") from exc
 
 
 def _sync_system_collective_dims(system_config_path, instances):
@@ -317,14 +325,22 @@ def _sync_system_collective_dims(system_config_path, instances):
 
 
 # parse cluster configuration from JSON file and build config file for astra-sim
-def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading=False, enable_attn_offloading=False, inputs_root=None):
-    cluster_config_path = f'../{cluster_config_path}' # move out from astra-sim folder
-    
+def build_cluster_config(
+    astra_sim,
+    cluster_config_path,
+    enable_local_offloading=False,
+    enable_attn_offloading=False,
+    inputs_root=None,
+):
+    cluster_config_path = f"../{cluster_config_path}"  # move out from astra-sim folder
+
     try:
-        with open(cluster_config_path, 'r') as f:
+        with open(cluster_config_path) as f:
             cluster_config = json.load(f)
-    except FileNotFoundError:
-        raise FileNotFoundError(f"Cluster configuration file '{cluster_config_path}' not found.")
+    except FileNotFoundError as err:
+        raise FileNotFoundError(
+            f"Cluster configuration file '{cluster_config_path}' not found."
+        ) from err
 
     except json.JSONDecodeError:
         print(f"Failed to parse JSON from '{cluster_config_path}'.")
@@ -340,11 +356,15 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
 
     # Validate cluster configuration
     if len(nodes) != num_nodes:
-        raise ValueError(f"Number of nodes ({len(nodes)}) does not match 'num_nodes' ({num_nodes}).")
+        raise ValueError(
+            f"Number of nodes ({len(nodes)}) does not match 'num_nodes' ({num_nodes})."
+        )
 
     if cluster_config.get("link_bw") is None or cluster_config.get("link_latency") is None:
-        raise KeyError("Both 'link_bw' and 'link_latency' must be specified in the cluster configuration.")
-    
+        raise KeyError(
+            "Both 'link_bw' and 'link_latency' must be specified in the cluster configuration."
+        )
+
     link_bw = cluster_config["link_bw"]
     link_latency = cluster_config["link_latency"]
 
@@ -361,7 +381,7 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
             "memory-type": "MEMORY_POOL",
             "mem-bw": cxl["mem_bw"],
             "mem-latency": cxl["mem_latency"],
-            "num-devices": cxl.get("num_devices", 1)
+            "num-devices": cxl.get("num_devices", 1),
         }
         cxl_mem_size = cxl["mem_size"]
 
@@ -371,11 +391,13 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
     power_modeling = True
     for node_config in nodes:
         if power_modeling and "power" not in node_config:
-            power_modeling = False # if one node does not have power spec, disable power modeling for all nodes
+            power_modeling = (
+                False  # if one node does not have power spec, disable power modeling for all nodes
+            )
         for key in required_keys:
             if key not in node_config:
                 raise KeyError(f"Missing required key '{key}' in node configuration.")
-    
+
     if power_modeling:
         # Check if all required power arguments are present in each node
         required_power_keys = ["base_node_power", "npu", "cpu", "dram", "link", "nic", "storage"]
@@ -390,36 +412,59 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
                     for temp_inst in node_config["instances"]:
                         hardware = temp_inst["hardware"]
                         if hardware not in power_config["npu"]:
-                            raise KeyError(f"Missing power configuration for npu hardware '{hardware}'.")
-                        npu_keys = ["idle_power","standby_power","active_power","standby_duration"]
+                            raise KeyError(
+                                f"Missing power configuration for npu hardware '{hardware}'."
+                            )
+                        npu_keys = [
+                            "idle_power",
+                            "standby_power",
+                            "active_power",
+                            "standby_duration",
+                        ]
                         for npu_key in npu_keys:
                             if npu_key not in power_config["npu"][hardware]:
-                                raise KeyError(f"Missing required key '{npu_key}' in npu '{hardware}' power configuration.")
+                                raise KeyError(
+                                    f"Missing required key '{npu_key}' in npu '{hardware}' power configuration."
+                                )
                 elif key == "cpu":
-                    cpu_keys = ["idle_power","active_power","util"]
+                    cpu_keys = ["idle_power", "active_power", "util"]
                     for cpu_key in cpu_keys:
                         if cpu_key not in power_config["cpu"]:
-                            raise KeyError(f"Missing required key '{cpu_key}' in cpu power configuration.")
+                            raise KeyError(
+                                f"Missing required key '{cpu_key}' in cpu power configuration."
+                            )
                 elif key == "dram":
-                    dram_keys = ["dimm_size", "idle_power", "energy_per_bit"] if not enable_attn_offloading else ["energy_per_bit"] # idle_power & dimm_size is not required if pim is enabled
+                    dram_keys = (
+                        ["dimm_size", "idle_power", "energy_per_bit"]
+                        if not enable_attn_offloading
+                        else ["energy_per_bit"]
+                    )  # idle_power & dimm_size is not required if pim is enabled
                     for dram_key in dram_keys:
                         if dram_key not in power_config["dram"]:
-                            raise KeyError(f"Missing required key '{dram_key}' in dram power configuration.")
+                            raise KeyError(
+                                f"Missing required key '{dram_key}' in dram power configuration."
+                            )
                 elif key == "link":
                     link_keys = ["num_links", "idle_power", "energy_per_bit"]
                     for link_key in link_keys:
                         if link_key not in power_config["link"]:
-                            raise KeyError(f"Missing required key '{link_key}' in link power configuration.")
+                            raise KeyError(
+                                f"Missing required key '{link_key}' in link power configuration."
+                            )
                 elif key == "nic":
                     nic_keys = ["num_nics", "idle_power"]
                     for nic_key in nic_keys:
                         if nic_key not in power_config["nic"]:
-                            raise KeyError(f"Missing required key '{nic_key}' in nic power configuration.")
+                            raise KeyError(
+                                f"Missing required key '{nic_key}' in nic power configuration."
+                            )
                 elif key == "storage":
                     storage_keys = ["num_devices", "idle_power"]
                     for storage_key in storage_keys:
                         if storage_key not in power_config["storage"]:
-                            raise KeyError(f"Missing required key '{storage_key}' in storage power configuration.")
+                            raise KeyError(
+                                f"Missing required key '{storage_key}' in storage power configuration."
+                            )
                 else:
                     raise KeyError(f"Unknown key '{key}' in power configuration.")
 
@@ -437,7 +482,9 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
     block_mode_on = []
     power_configs = []
     cpu_mem_size = []
-    cpu_mem_enabled = False  # only one type of cpu memory config is supported for now (latency & bandwidth)
+    cpu_mem_enabled = (
+        False  # only one type of cpu memory config is supported for now (latency & bandwidth)
+    )
     node_id = 0
     inst_id = 0
     pim_models = [None for _ in range(num_nodes)]
@@ -472,7 +519,9 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
 
         # Validate instance configuration
         if len(instances) != num_instances:
-            raise ValueError(f"Number of instances ({len(instances)}) does not match 'num_instances' ({num_instances}).")
+            raise ValueError(
+                f"Number of instances ({len(instances)}) does not match 'num_instances' ({num_instances})."
+            )
 
         total_num_instances += num_instances
         total_instances.extend(instances)
@@ -483,9 +532,11 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
         if enable_attn_offloading:
             # parse pim config
             if "pim_config" not in cpu_mem:
-                raise KeyError("Missing 'pim_config' in 'cpu_mem' configuration while attention offloading is enabled.")
+                raise KeyError(
+                    "Missing 'pim_config' in 'cpu_mem' configuration while attention offloading is enabled."
+                )
             pim_config_name = cpu_mem["pim_config"]
-            pim_config_path = f'../configs/pim/{pim_config_name}.ini'
+            pim_config_path = f"../configs/pim/{pim_config_name}.ini"
 
             if "mem_size" not in cpu_mem:
                 raise KeyError("Missing required key 'mem_size' in 'cpu_mem' configuration.")
@@ -509,25 +560,27 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
             for key in mem_required_keys:
                 if key not in cpu_mem:
                     raise KeyError(f"Missing required key '{key}' in 'cpu_mem' configuration.")
-                
+
         cpu_mem_size.append(cpu_mem["mem_size"])
 
-        if power_modeling: # add mem_size (dram size) to power config
+        if power_modeling:  # add mem_size (dram size) to power config
             power = node_config["power"]
-            power["dram"]["mem_size"] = cpu_mem["mem_size"] 
+            power["dram"]["mem_size"] = cpu_mem["mem_size"]
             if enable_attn_offloading:
-                if 'dimm_size' in power["dram"]:
+                if "dimm_size" in power["dram"]:
                     logger.warning(
-                    "'dimm_size' in 'dram' power configuration will be overwritten by %s in 'pim_config'.",
-                    pim_config["dimm_size"],
-                )
+                        "'dimm_size' in 'dram' power configuration will be overwritten by %s in 'pim_config'.",
+                        pim_config["dimm_size"],
+                    )
                 power["dram"]["dimm_size"] = pim_config["dimm_size"]
-                (power["dram"]["idle_power"], power["dram"]["pim_active_power"]) = pim_model.get_pim_power()
-                if 'idle_power' in power["dram"]:
-                    logger.warning(
-                    "'idle_power' in 'dram' power configuration will be overwritten by %s in 'pim_config'.",
-                    power["dram"]["idle_power"],
+                (power["dram"]["idle_power"], power["dram"]["pim_active_power"]) = (
+                    pim_model.get_pim_power()
                 )
+                if "idle_power" in power["dram"]:
+                    logger.warning(
+                        "'idle_power' in 'dram' power configuration will be overwritten by %s in 'pim_config'.",
+                        power["dram"]["idle_power"],
+                    )
 
             power_configs.append(power)
 
@@ -536,26 +589,29 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
                 "memory-type": "PER_NODE_MEMORY_EXPANSION",
                 "mem-bw": cpu_mem["mem_bw"],
                 "mem-latency": cpu_mem["mem_latency"],
-                "num-devices": num_nodes
+                "num-devices": num_nodes,
             }
             # only one type of PIM memory config is supported for now
             if enable_attn_offloading:
-                memory_config["remote_mem"]["pim-channels"] = cpu_mem["mem_size"] // pim_config["dimm_size"] # one pim channel has one dimm
+                memory_config["remote_mem"]["pim-channels"] = (
+                    cpu_mem["mem_size"] // pim_config["dimm_size"]
+                )  # one pim channel has one dimm
             cpu_mem_enabled = True
-        
+
         # Calculate the total number of NPUs and create a mapping for each instance
-        npu_mem_enabled = False  # only one type of npu memory config is supported for now (latency & bandwidth)
+        npu_mem_enabled = (
+            False  # only one type of npu memory config is supported for now (latency & bandwidth)
+        )
 
         for idx, instance in enumerate(instances):
             npu_mem = instance.get("npu_mem")
             num_npus = instance["num_npus"]
-            pp_size = instance["pp_size"]
             pd_type = instance.get("pd_type", None)
 
             for key in mem_required_keys:
                 if key not in npu_mem:
                     raise KeyError(f"Missing required key '{key}' in 'npu_mem' configuration.")
-            
+
             if not npu_mem_enabled:
                 # insert to system configuration
                 with open(system_config_path) as f:
@@ -566,28 +622,30 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
 
                 with open(system_config_path, "w", encoding="utf-8") as f:
                     json.dump(system_config, f, ensure_ascii=False, indent=2)
-                
+
                 # add memory if local offloading is enabled
                 if enable_local_offloading:
                     memory_config["local_mem"] = {
                         "memory-type": "PER_NPU_MEMORY_EXPANSION",
                         "mem-bw": npu_mem["mem_bw"],
-                        "mem-latency": npu_mem["mem_latency"]
+                        "mem-latency": npu_mem["mem_latency"],
                     }
                 npu_mem_enabled = True
 
             if pd_type not in ["prefill", "decode", None]:
-                raise ValueError(f"Invalid pd_type '{pd_type}' in instance {idx}. Must be 'prefill', 'decode', or omitted.")
+                raise ValueError(
+                    f"Invalid pd_type '{pd_type}' in instance {idx}. Must be 'prefill', 'decode', or omitted."
+                )
 
             # instance_id vs idx stands for node-internal instance numbering.
             # For example, 2 node and each node has 2 instances
             # Node 1 -> Instance 0 (idx 0), Instance 1 (idx 1)
-            # Node 2 -> Instance 2 (idx 0), Insatnce 3 (idx 1) 
-            
+            # Node 2 -> Instance 2 (idx 0), Insatnce 3 (idx 1)
+
             # Update inst2npu_mapping
             instance_id = instance.get("instance_id")
             inst2npu_mapping[instance_id] = current_npu_start
-            start_npu_ids += str(current_npu_start) + ","       # npus to check start condition
+            start_npu_ids += str(current_npu_start) + ","  # npus to check start condition
             # Add sender NPUs in prefill instance
             effective_npus = num_npus
             if pd_type == "prefill":
@@ -611,33 +669,38 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
 
             default_cfg = placement_cfg.get("default") or {}
             d_weights = _mem_str(default_cfg.get("weights", "npu"), node_id)
-            d_kv     = _mem_str(default_cfg.get("kv_loc", "npu"), node_id)
-            d_evict  = _mem_str(default_cfg.get("kv_evict_loc", "cpu"), node_id)
+            d_kv = _mem_str(default_cfg.get("kv_loc", "npu"), node_id)
+            d_evict = _mem_str(default_cfg.get("kv_evict_loc", "cpu"), node_id)
 
             # Seed defaults
             block = []
             layer = {}
 
             # Apply block overrides if any
-            block_mode = False # if weights differ in blocks, we can not copy and paste the same trace for all layers
-            for rule in (placement_cfg.get("blocks") or []):
+            block_mode = False  # if weights differ in blocks, we can not copy and paste the same trace for all layers
+            for rule in placement_cfg.get("blocks") or []:
                 ids = _parse_blocks_expr(rule.get("blocks", ""), num_hidden_layers)
                 if not ids:
                     continue
                 if not block:
                     # allocate on first actual application
-                    block = [{"weights": d_weights, "kv_loc": d_kv, "kv_evict_loc": d_evict}
-                            for _ in range(num_hidden_layers)]
+                    block = [
+                        {"weights": d_weights, "kv_loc": d_kv, "kv_evict_loc": d_evict}
+                        for _ in range(num_hidden_layers)
+                    ]
                 block_mode = True
                 if "weights" in rule:
                     v = _mem_str(rule["weights"], node_id)
-                    for i in ids: block[i]["weights"] = v
+                    for i in ids:
+                        block[i]["weights"] = v
                 if "kv_loc" in rule:
                     v = _mem_str(rule["kv_loc"], node_id)
-                    for i in ids: block[i]["kv_loc"] = v
+                    for i in ids:
+                        block[i]["kv_loc"] = v
                 if "kv_evict_loc" in rule:
                     v = _mem_str(rule["kv_evict_loc"], node_id)
-                    for i in ids: block[i]["kv_evict_loc"] = v
+                    for i in ids:
+                        block[i]["kv_evict_loc"] = v
 
             # Apply layer overrides (highest priority)
             for lname, rule in (placement_cfg.get("layers") or {}).items():
@@ -645,7 +708,7 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
                 if "weights" in rule:
                     entry["weights"] = _mem_str(rule["weights"], node_id)
                 if "kv_loc" in rule:
-                    entry["kv_loc"] =  _mem_str(rule["kv_loc"], node_id)
+                    entry["kv_loc"] = _mem_str(rule["kv_loc"], node_id)
                 if "kv_evict_loc" in rule:
                     entry["kv_evict_loc"] = _mem_str(rule["kv_evict_loc"], node_id)
                 if entry:
@@ -657,18 +720,16 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
 
             inst_placement = {
                 "default": {"weights": d_weights, "kv_loc": d_kv, "kv_evict_loc": d_evict},
-                "block": block,   # list of length = num_hidden_layers
-                "layer": layer,   # dict: name -> {weights, kv_loc, kv_evict_loc}
+                "block": block,  # list of length = num_hidden_layers
+                "layer": layer,  # dict: name -> {weights, kv_loc, kv_evict_loc}
             }
             placement.append(inst_placement)
             block_mode_on.append(block_mode)
 
-        
         node_id += 1
 
     total_npu = sum(
-        inst["num_npus"] if inst["pd_type"] != "prefill"
-        else inst["num_npus"] * 2
+        inst["num_npus"] if inst["pd_type"] != "prefill" else inst["num_npus"] * 2
         for inst in total_instances
     )
 
@@ -712,8 +773,9 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
         "memory_config_path": memory_config_path,
     }
     # print("Current cluster : {}".format(cluster))
-                
+
     return cluster
+
 
 # generates topology according to the input arguments
 def _create_network_config(network_config_path, instances, link_bw, link_latency):
@@ -733,20 +795,23 @@ def _create_network_config(network_config_path, instances, link_bw, link_latency
         "latency": _normalize_network_dim_values(link_latency, num_dims, "link_latency"),
     }
 
-    with open(network_config_path, 'w') as yaml_file:
+    with open(network_config_path, "w") as yaml_file:
         yaml.dump(topology_data, yaml_file, default_flow_style=False, sort_keys=False)
 
     return
+
 
 # Validate memory configuration against placement settings
 def _validate_memory_config(memory_config_path, placement, enable_local_offloading):
 
     # 1) Load memory_config
     try:
-        with open(memory_config_path, 'r') as f:
+        with open(memory_config_path) as f:
             memory_config = json.load(f)
-    except FileNotFoundError:
-        raise FileNotFoundError(f"Memory configuration file '{memory_config_path}' not found.")
+    except FileNotFoundError as err:
+        raise FileNotFoundError(
+            f"Memory configuration file '{memory_config_path}' not found."
+        ) from err
 
     except json.JSONDecodeError:
         print(f"Failed to parse JSON from '{memory_config_path}'.")
@@ -759,7 +824,7 @@ def _validate_memory_config(memory_config_path, placement, enable_local_offloadi
         num_devices = 1
         if isinstance(mem_details, dict):
             num_devices = int(mem_details.get("num-devices", 1))
-        prefix = mem_type.split('_')[0].upper()  # "local_mem" -> "LOCAL", "cxl_mem" -> "CXL"
+        prefix = mem_type.split("_")[0].upper()  # "local_mem" -> "LOCAL", "cxl_mem" -> "CXL"
         for i in range(num_devices):
             allowed.add(f"{prefix}:{i}")
 
@@ -779,7 +844,6 @@ def _validate_memory_config(memory_config_path, placement, enable_local_offloadi
         for kind in ("weights", "kv_loc", "kv_evict_loc"):
             if kind in entry and entry[kind] is not None:
                 if not _ok(entry[kind]):
-                    loc_n = _norm(entry[kind])
                     raise ValueError(
                         f"Invalid location for {obj_name}.{kind}: '{entry[kind]}'. "
                         f"Not found in memory configuration '{memory_config_path}'."
@@ -795,8 +859,9 @@ def _validate_memory_config(memory_config_path, placement, enable_local_offloadi
 
         for lname, ent in ((inst_placement or {}).get("layer") or {}).items():
             _check_entry(f"layer[{lname}]", ent or {})
-    
+
     return
+
 
 def get_device(placement, block_idx, layer_name, kind):
     """
@@ -804,9 +869,9 @@ def get_device(placement, block_idx, layer_name, kind):
     kind ∈ {"weights","kv_loc","kv_evict_loc"}.
     """
     # Defensive defaults
-    if kind not in {"weights","kv_loc","kv_evict_loc"}:
+    if kind not in {"weights", "kv_loc", "kv_evict_loc"}:
         raise ValueError(f"Invalid kind '{kind}' for get_device()")
-    
+
     if kind == "kv_evict_loc":
         d = placement["default"][kind]
     else:
@@ -828,13 +893,13 @@ def get_device(placement, block_idx, layer_name, kind):
 def _parse_blocks_expr(expr, num_layers):
     """Parse '0-3,5,7-9' → [0,1,2,3,5,7,8,9] with bounds check."""
     s = set()
-    for part in str(expr).split(','):
+    for part in str(expr).split(","):
         part = part.strip()
         if not part:
             continue
-        if '-' in part:
+        if "-" in part:
             try:
-                a, b = part.split('-', 1)
+                a, b = part.split("-", 1)
                 a, b = int(a), int(b)
             except ValueError:
                 continue
@@ -851,6 +916,7 @@ def _parse_blocks_expr(expr, num_layers):
                 s.add(v)
     return sorted(s)
 
+
 def _norm(loc):
     """Upper-case and ensure ':0' suffix if missing."""
     if not isinstance(loc, str):
@@ -860,9 +926,10 @@ def _norm(loc):
         loc = f"{loc}:0"
     return loc
 
+
 def _mem_str(loc, node_id):
     if loc.upper().startswith("NPU"):
-        return "LOCAL" # no need of device number, as only one npu is mapped to one local memory (no sharing)
+        return "LOCAL"  # no need of device number, as only one npu is mapped to one local memory (no sharing)
     elif loc.upper().startswith("CPU"):
         return f"REMOTE:{node_id}"
     elif loc.upper().startswith("CXL"):

@@ -90,9 +90,7 @@ class Extension:
         route: ExpertRoute | None = None
         if kind == "moe":
             if shot.experts is None or "activated" not in shot.experts:
-                raise ValueError(
-                    "moe shot missing experts.activated payload"
-                )
+                raise ValueError("moe shot missing experts.activated payload")
             moe_layer = single_moe_layer(self.model_runner)
             num_tokens = sum(new for new, _ in shot.requests)
             route = ExpertRoute.forge(

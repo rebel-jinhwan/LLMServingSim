@@ -8,8 +8,9 @@ def test_block_pool():
     KB = 1024
 
     def new_pool(n=8, caching=True):
-        return BlockPool(Device.NPU, n, block_size=16,
-                         bytes_per_block=16 * 128 * KB, enable_caching=caching)
+        return BlockPool(
+            Device.NPU, n, block_size=16, bytes_per_block=16 * 128 * KB, enable_caching=caching
+        )
 
     # allocate / free round-trip restores the free count
     p = new_pool()
@@ -86,8 +87,9 @@ def test_block_pool():
         raise AssertionError("over-allocation must raise")
 
     # a lower tier at a coarser granularity is the same class
-    cpu = BlockPool(Device.CPU, 4, block_size=256,
-                    bytes_per_block=256 * 128 * KB, enable_caching=True)
+    cpu = BlockPool(
+        Device.CPU, 4, block_size=256, bytes_per_block=256 * 128 * KB, enable_caching=True
+    )
     assert cpu.block_size == 16 * 16
     assert cpu.bytes_per_block == 16 * p.bytes_per_block
 
@@ -99,7 +101,6 @@ def test_block_pool():
     for h in (1002, 1003, 1004):
         assert cpu.cache_copy(h) is True
     assert len(cpu.cached_block_hash_to_block) == 4
-    assert cpu.cache_copy(1005) is True                  # forces an eviction
+    assert cpu.cache_copy(1005) is True  # forces an eviction
     assert cpu.get_cached_block(1001) is None, "oldest copy dropped first"
     assert len(cpu.cached_block_hash_to_block) == 4
-

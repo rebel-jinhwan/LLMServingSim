@@ -131,7 +131,21 @@ scheduler.py → next iteration
 ## Code Style & Formatting
 
 - **Python**: 4-space indentation, snake_case for functions/variables, PascalCase for classes
-- **No enforced formatter** — match surrounding code style in the file you're editing
+- **`pip install -e '.[dev]'`** is what a contributor needs: it pins `ruff`,
+  `mypy` and `pytest` in one place, and CI installs exactly the same thing.
+  `pre-commit install` then runs ruff and mypy before each commit, from that
+  install — `.pre-commit-config.yaml` pins nothing of its own
+- **`ruff format` is the formatter** — configured under `[tool.ruff]` in
+  `pyproject.toml` (line length 100, target Python 3.10). Run `ruff format .`
+  and `ruff check .` from the repo root before committing;
+  `.github/workflows/ci.yml` runs both, plus `mypy`, on every push and pull
+  request
+- **mypy is opt-in per module**, configured under `[tool.mypy]` in the same
+  file. Errors are ignored globally and modules opt back in as they gain
+  annotations — add the module to `[[tool.mypy.overrides]]` rather than
+  flipping the global default
+- `astra-sim/` and `llmservingsim/profiler/v0/` are excluded from all three
+  tools
 - **CLI flags**: use hyphens (`--cluster-config`, `--max-num-seqs`)
 - **Internal Python**: use underscores (`max_num_seqs`, `enable_chunked_prefill`)
 - **JSON config filenames**: descriptive snake_case (`single_node_pim_instance.json`)

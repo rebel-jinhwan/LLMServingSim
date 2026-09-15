@@ -9,6 +9,7 @@ class RequestStatus(Enum):
     tell a first admission from a resume; the scheduler itself treats both
     through the same admission path.
     """
+
     WAITING = 1
     RUNNING = 2
     PREEMPTED = 3
@@ -17,7 +18,18 @@ class RequestStatus(Enum):
 
 # class that manages request of astra-sim
 class Request:
-    def __init__(self, id, model, input, output, arrival, instance_id, input_hash_ids=None, output_hash_ids=None, is_init=True):
+    def __init__(
+        self,
+        id,
+        model,
+        input,
+        output,
+        arrival,
+        instance_id,
+        input_hash_ids=None,
+        output_hash_ids=None,
+        is_init=True,
+    ):
         self.id = id
         self.model = model
         self.input = input  # Always keep original input length
@@ -72,7 +84,7 @@ class Request:
 
     # to print the request information
     def __str__(self):
-        return str(self.__dict__) 
+        return str(self.__dict__)
 
     def add_latency(self, end_time):
         self.end_time = end_time
@@ -82,21 +94,21 @@ class Request:
             self.tpot = 0
         else:
             self.tpot = (self.latency - self.ttft) // (self.output - self.input - 1)
-    
-    def add_itl(self, current): # 
+
+    def add_itl(self, current):  #
         self.itl.append(current - self.recent_end)
         self.recent_end = current
 
     def set_que_delay(self, current):
         self.queuing_delay = current - self.arrival
-    
+
     def set_ttft(self, current):
         self.ttft = current - self.arrival
         self.recent_end = current
-    
+
     def log(self):
-        print("         scheduled request : {}".format(self.__dict__))
-    
+        print(f"         scheduled request : {self.__dict__}")
+
     @property
     def num_tokens(self):
         """Tokens this request needs a slot for, vLLM's ``num_tokens``.
@@ -116,13 +128,31 @@ class Request:
 
 # class that manages batch of astra-sim
 class Batch:
-    def __init__(self, batch_id, model, total_len, kv_len, q_list, k_list, num_prefill, num_decode, prefill_q_list, prefill_k_list, decode_k_list, batch_time, kv_size, evict=0, load=0, pd_kv_send_tokens=0):
+    def __init__(
+        self,
+        batch_id,
+        model,
+        total_len,
+        kv_len,
+        q_list,
+        k_list,
+        num_prefill,
+        num_decode,
+        prefill_q_list,
+        prefill_k_list,
+        decode_k_list,
+        batch_time,
+        kv_size,
+        evict=0,
+        load=0,
+        pd_kv_send_tokens=0,
+    ):
         self.batch_id = batch_id
         self.model = model
         self.total_len = total_len
         self.kv_len = kv_len
         self.batch_time = batch_time
-        self.fired = [] # systems that fired this batch
+        self.fired = []  # systems that fired this batch
         self.requests = []
         self.end = []
         # vllm
@@ -152,13 +182,13 @@ class Batch:
 
         # for debugging
         self.scheduled_tokens = None
+
     def log(self):
         print("-------------------------Batch Log------------------------")
         for key in self.__dict__.keys():
-            if key == 'requests':
+            if key == "requests":
                 continue
-            print("         {} : {}".format(key, self.__dict__[key]))
+            print(f"         {key} : {self.__dict__[key]}")
         for req in self.requests:
             req.log()
         print("----------------------------------------------------------")
-    
