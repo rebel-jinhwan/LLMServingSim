@@ -1,0 +1,36 @@
+{
+    "num_nodes": 1,
+    "link_bw": 18.5,
+    "link_latency": 5300000,
+    "nodes": [
+        {
+            "num_instances": 2,
+            "cpu_mem": {
+                "mem_size": 1024,
+                "mem_bw": 256,
+                "mem_latency": 0
+            },
+            "instances": [
+                {
+                    "model_name": "meta-llama/Llama-3.2-1B-Instruct",
+                    "hardware": "RBLN-CR03",
+                    "num_npus": 1,
+                    "tp_size": 1,
+                    "pd_type": "prefill",
+                    "block_size": 1024,
+                    "step_overhead_us": 0,
+                    "prefill_step_overhead_us": 2630
+                },
+                {
+                    "model_name": "meta-llama/Llama-3.2-1B-Instruct",
+                    "hardware": "RBLN-CR03",
+                    "num_npus": 1,
+                    "tp_size": 1,
+                    "pd_type": "decode",
+                    "block_size": 1024,
+                    "step_overhead_us": 700
+                }
+            ]
+        }
+    ]
+}
