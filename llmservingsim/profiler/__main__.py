@@ -87,7 +87,7 @@ def _add_common_flags(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--platform",
         default=None,
-        help="Platform (cuda, rbln, or one installed through the "
+        help="Platform (cuda, or one installed through the "
              "llmservingsim.platforms entry-point group). Default: "
              "$LLMSERVINGSIM_PLATFORM, then the platform whose devices/ "
              "describes --hardware, then the one whose hardware this host has.",

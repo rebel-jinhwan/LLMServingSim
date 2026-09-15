@@ -380,14 +380,15 @@ def main():
                         'variant folder -- fp8 resolves to <dtype>-kvfp8, e.g. bf16-kvfp8 -- and '
                         'halves KV cache memory. Override per instance with "kv_cache_dtype"')
     parser.add_argument('--platform', type=str, default=None,
-                        help='Platform (cuda, rbln, or one installed through the llmservingsim.platforms '
+                        help='Platform (cuda, or one installed through the llmservingsim.platforms '
                              'entry-point group). Default: the platform recorded in each instance\'s perf '
                              'bundle meta.yaml, then $LLMSERVINGSIM_PLATFORM, then the platform whose '
                              'devices/ describes the instance\'s hardware, else cuda. Picks the scheduler; '
                              'the trace shape follows the bundle either way.')
     parser.add_argument('--scheduler', type=str, choices=['platform', 'vllm'], default='platform',
-                        help='platform: the scheduler the platform names (cuda: the in-tree port; rbln: '
-                             'vllm-rbln\'s RBLNScheduler). vllm: drive the installed vLLM\'s own scheduler '
+                        help='platform: the scheduler the platform names (cuda: the in-tree port; an '
+                             'out-of-tree platform may name its vLLM plugin\'s own). vllm: drive the installed '
+                             'vLLM\'s own scheduler '
                              'through serving.core.vllm_scheduler regardless of platform (needs vLLM importable).')
     parser.add_argument('--step-overhead-us', type=float, default=0.0,
                         help='Host time per step, in microseconds, added to every row of a step-granularity '
@@ -399,7 +400,7 @@ def main():
                              'profiles). Per-instance as "prefill_step_overhead_us"')
     parser.add_argument('--engine-kwargs', type=str, default=None,
                         help='JSON object of extra vLLM EngineArgs for the vLLM-driven scheduler '
-                             '(--scheduler vllm or the rbln platform), e.g. \'{"max_model_len": 65536}\'. '
+                             '(--scheduler vllm, or a platform that names one), e.g. \'{"max_model_len": 65536}\'. '
                              'Ignored by the in-tree scheduler.')
     parser.add_argument('--network-backend', type=str, choices=['analytical', 'ns3'], default='analytical',
                         help='network simulation backend: analytical (fast, default) or ns3 (detailed, WIP)')
@@ -558,8 +559,8 @@ def main():
         inst_cfg = instance_runtime_configs[instance_id]
 
         # The bundle names the platform it was profiled on, so the scheduler
-        # follows the data: a step-granularity RBLN bundle gets vllm-rbln's
-        # no-mixed-batching scheduler without a flag.
+        # follows the data: a step-granularity bundle gets its platform's
+        # scheduler, such as a no-mixed-batching one, without a flag.
         platform = load_platform(args.platform, load_bundle_meta(
             instance["hardware"], instance["model_name"],
             inst_cfg["dtype"], inst_cfg["kv_cache_dtype"]), hardware=instance["hardware"])

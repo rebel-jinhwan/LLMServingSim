@@ -5,6 +5,21 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
 
 ## [Unreleased]
 
+### Changed
+- The `rbln` platform now lives out of tree, in
+  [`llmservingsim-rbln`](https://github.com/rebel-jinhwan/llmservingsim-rbln),
+  which is the worked example of the platform plugin interface: it ships the
+  platform, the `RBLN-CR03` device spec, the profiled step bundles, the cluster
+  configs and the four calibrated end-to-end examples. Installing it registers
+  everything through the `llmservingsim.platforms` entry point; nothing in
+  LLMServingSim names Rebellions hardware any more. Step granularity,
+  prefill/decode over NIXL, the calibration knobs and the vLLM-driven scheduler
+  stay in tree, because none of them is vendor-specific.
+- `bench/examples/run.sh` and `bench/examples/validate.sh` take `EXAMPLES_DIR`,
+  so a platform that lives outside this repository keeps its calibrated
+  examples next to itself and still runs them through the in-tree runner.
+  Paths outside the repo root are passed through absolute instead of refused.
+
 ### Added
 - Out-of-tree platforms, modelled on LMCache's multi-hardware architecture. A
   platform is now a `platforms/spec.py::PlatformSpec` subclass carrying `name`,

@@ -318,7 +318,10 @@ def _sync_system_collective_dims(system_config_path, instances):
 
 # parse cluster configuration from JSON file and build config file for astra-sim
 def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading=False, enable_attn_offloading=False, inputs_root=None):
-    cluster_config_path = f'../{cluster_config_path}' # move out from astra-sim folder
+    if not os.path.isabs(cluster_config_path):
+        # Relative paths are rooted at the repo, and the simulator runs from
+        # astra-sim/. An out-of-tree config arrives absolute and is left alone.
+        cluster_config_path = f'../{cluster_config_path}'
     
     try:
         with open(cluster_config_path, 'r') as f:
