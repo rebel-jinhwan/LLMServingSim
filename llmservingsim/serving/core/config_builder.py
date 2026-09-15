@@ -323,8 +323,8 @@ def resolve_cluster_config(path):
     otherwise (the simulator runs from astra-sim/, hence the ../). A bare
     name is a lookup: the in-tree configs/cluster/ first, then each
     registered platform's configs/cluster/. A platform can therefore ship
-    the deployments it was calibrated for, the way it ships its devices/,
-    perf/ and models/, and a run names the config without knowing which
+    the deployments it was calibrated for, the way it ships its devices/
+    and perf/, and a run names the config without knowing which
     package holds it.
 
     The two are kept apart on purpose. A path that names a directory is

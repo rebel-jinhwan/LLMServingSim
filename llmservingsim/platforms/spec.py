@@ -13,8 +13,11 @@ Rules a platform must follow, built in or not:
 - ``name`` is lowercase, unique, and equal to the entry-point name.
 - Anything the platform ships as files lives next to the spec's module:
   ``devices/<hardware>.yaml``, ``perf/<hardware>/<model>/<variant>/`` bundles
-  and ``models/<model_type>.yaml`` architecture catalogs. The simulator and
-  the profiler search those after the in-tree locations.
+  and ``configs/cluster/<name>.json`` deployments. The simulator and the
+  profiler search those after the in-tree locations. Architecture catalogs
+  (``profiler/models/``) are deliberately not among them: a catalog describes
+  a model, not the hardware it runs on, so a missing one is contributed
+  upstream rather than shipped by a vendor.
 """
 
 from __future__ import annotations
@@ -113,7 +116,7 @@ class PlatformSpec:
 
     @property
     def resource_dir(self) -> Path:
-        """Directory holding the platform's ``devices/``, ``perf/`` and ``models/``."""
+        """Directory holding the platform's ``devices/``, ``perf/`` and ``configs/``."""
         return Path(inspect.getfile(type(self))).resolve().parent
 
     def resources(self, kind: str) -> Path | None:

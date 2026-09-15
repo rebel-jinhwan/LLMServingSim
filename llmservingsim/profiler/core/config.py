@@ -308,14 +308,9 @@ def resolve_architecture_by_model_type(
     candidate = arch_dir / f"{model_type}.yaml"
     if candidate.is_file():
         return candidate.resolve()
-    # Then architecture catalogs a platform ships in its own models/.
-    from platforms import resource_dirs
-    for models_dir in resource_dirs("models"):
-        if (models_dir / f"{model_type}.yaml").is_file():
-            return (models_dir / f"{model_type}.yaml").resolve()
 
     # List available architectures to help the user decide what to do.
-    available = sorted({p.stem for d in (arch_dir, *resource_dirs("models")) for p in d.glob("*.yaml")})
+    available = sorted(p.stem for p in arch_dir.glob("*.yaml"))
     raise FileNotFoundError(
         f"No architecture yaml found for model_type={model_type!r}. "
         f"Tried {candidate}.\n"

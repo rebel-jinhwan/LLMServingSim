@@ -18,7 +18,6 @@ Layout of a platform package, in tree or in its own distribution::
     <pkg>/profile.py               class <Vendor>Profile(PlatformProfile)
     <pkg>/devices/<hardware>.yaml  npu_mem defaults, kv_cache_dtypes
     <pkg>/perf/<hardware>/...      step or layer perf bundles (optional)
-    <pkg>/models/<model_type>.yaml architecture catalogs (optional)
 
 ``load_platform`` resolves, first hit wins: the explicit name, the perf
 bundle's recorded ``platform``, ``$LLMSERVINGSIM_PLATFORM``, the platform

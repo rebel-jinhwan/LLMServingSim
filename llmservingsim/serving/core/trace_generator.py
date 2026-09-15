@@ -69,9 +69,6 @@ def _arch_yaml_path(model_type):
         os.path.join(repo_root, "profiler", "models", f"{model_type}.yaml"),
         os.path.join(serving_dir, "profiler", "models", f"{model_type}.yaml"),
     ]
-    # Then architecture catalogs a platform ships in its own models/.
-    from platforms import resource_dirs
-    candidate_paths += [str(d / f"{model_type}.yaml") for d in resource_dirs("models")]
     for path in candidate_paths:
         if os.path.isfile(path):
             return path

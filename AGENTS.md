@@ -185,12 +185,14 @@ per platform, in tree or out, and one registry holding both.
   add a spec value you have not measured without saying so in the file.
 - `resource_dirs(kind)` is how anything a platform ships as files is found:
   `devices/`, `perf/<hardware>/<model>/<variant>/` bundles,
-  `models/<model_type>.yaml` catalogs and `configs/cluster/<name>.json`,
-  each searched after the in-tree locations by
-  `trace_generator._variant_root()` / `_arch_yaml_path()`,
-  `profiler/core/config.py` and `config_builder.resolve_cluster_config()`.
-  An out-of-tree platform therefore needs no change to LLMServingSim to
-  ship its own devices, profiles, architectures and deployments.
+  and `configs/cluster/<name>.json`, each searched after the in-tree
+  locations by `trace_generator._variant_root()` and
+  `config_builder.resolve_cluster_config()`. An out-of-tree platform
+  therefore needs no change to LLMServingSim to ship its own devices,
+  profiles and deployments. Architecture catalogs (`profiler/models/`) are
+  deliberately not a platform resource: a catalog describes a model, not
+  the hardware it runs on, so a missing `model_type` is contributed
+  upstream rather than shipped by a vendor.
 
 `load_platform(name, meta, *, hardware, detect)` resolves, first hit wins:
 the explicit name (`--platform` on `python -m profiler` / `python -m
