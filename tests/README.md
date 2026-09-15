@@ -30,5 +30,5 @@ comparisons. Run that after any change under `serving/`.
 | Check | Needs |
 | --- | --- |
 | `test_block_pool`, `test_kv_cache_manager`, `test_utils` | nothing beyond the simulator's own dependencies |
-| `test_platforms` | pyyaml; an installed platform plugin joins the registry and is checked too |
+| `test_platforms`, `test_platform_profile` | pyyaml; an installed platform plugin joins the registry and is checked too |
 | `test_vllm_scheduler` | vLLM importable, and **no** vLLM platform plugin active, since it compares against upstream vLLM's scheduler. With a plugin installed, run it as `VLLM_PLUGINS= pytest tests/test_vllm_scheduler.py` |

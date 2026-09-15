@@ -117,8 +117,12 @@ class Shot:
 # version we run in the worker) without pulling in every vLLM symbol.
 
 
-def assemble_scheduler_output(shot: Shot, model_runner):
+def assemble_scheduler_output(shot: Shot, model_runner, scheduler_output_cls=None):
     """Build a ``SchedulerOutput`` describing the shot's synthetic batch.
+
+    ``scheduler_output_cls`` is the class the platform's runner reads
+    (vllm-rbln's ``RBLNSchedulerOutput`` adds ``kv_cache_copy_ops``);
+    vLLM's own when None.
 
     Returns:
         A tuple ``(scheduler_output, req_ids)``. The second element is
@@ -196,7 +200,7 @@ def assemble_scheduler_output(shot: Shot, model_runner):
         total_num_scheduled_tokens += new_tokens
         req_ids.append(req_id)
 
-    scheduler_output = SchedulerOutput(
+    scheduler_output = (scheduler_output_cls or SchedulerOutput)(
         scheduled_new_reqs=scheduled,
         scheduled_cached_reqs=CachedRequestData.make_empty(),
         num_scheduled_tokens=num_scheduled_tokens,

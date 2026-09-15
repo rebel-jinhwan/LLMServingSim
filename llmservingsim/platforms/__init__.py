@@ -6,6 +6,8 @@ built the same way:
 
 - ``platforms.spec.PlatformSpec``: one class per platform, safe to construct
   without the hardware; every capability is read off it.
+- ``platforms.profile.PlatformProfile``: the profiler-side interface a spec's
+  ``profile_cls`` implements.
 - ``platforms._registry``: built-ins (subpackages of ``platforms/``) and
   out-of-tree specs (the ``llmservingsim.platforms`` entry-point group) in
   one registry.
@@ -13,6 +15,7 @@ built the same way:
 Layout of a platform package, in tree or in its own distribution::
 
     <pkg>/__init__.py              class <Vendor>Platform(PlatformSpec)
+    <pkg>/profile.py               class <Vendor>Profile(PlatformProfile)
     <pkg>/devices/<hardware>.yaml  memory facts, fp8 support
     <pkg>/perf/<hardware>/...      step or layer perf bundles (optional)
     <pkg>/cluster/<name>.json      cluster configs, found by bare name (optional)
