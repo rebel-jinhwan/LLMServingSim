@@ -35,10 +35,10 @@ from llmservingsim.profiler.core.config import (
     probe_moe_params,
 )
 
-
 # ---------------------------------------------------------------------------
 # Runtime limits
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class RuntimeLimits:
@@ -67,6 +67,7 @@ class RuntimeLimits:
 # Kwarg merging
 # ---------------------------------------------------------------------------
 
+
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """Recursively merge ``override`` on top of ``base``.
 
@@ -75,11 +76,7 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
     """
     out = copy.deepcopy(base)
     for k, v in override.items():
-        if (
-            k in out
-            and isinstance(out[k], dict)
-            and isinstance(v, dict)
-        ):
+        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
             out[k] = _deep_merge(out[k], v)
         else:
             out[k] = copy.deepcopy(v)
@@ -152,9 +149,7 @@ def fuse_engine_kwargs(args: ProfileArgs, tp: int) -> dict[str, Any]:
 
     # 3. Compose hf_overrides:
     #       defaults (num_hidden_layers=1) → CLI → sharded.
-    hf_overrides: dict[str, Any] = dict(
-        HOST_ENGINE_DEFAULTS.get("hf_overrides", {})
-    )
+    hf_overrides: dict[str, Any] = dict(HOST_ENGINE_DEFAULTS.get("hf_overrides", {}))
     if args.hf_overrides:
         hf_overrides = _deep_merge(hf_overrides, args.hf_overrides)
 
@@ -178,10 +173,7 @@ def fuse_engine_kwargs(args: ProfileArgs, tp: int) -> dict[str, Any]:
             continue
         val = args.model_config[field_name]
         if not isinstance(val, int):
-            raise TypeError(
-                f"shard field {field_name!r} must be an int; got "
-                f"{type(val).__name__}"
-            )
+            raise TypeError(f"shard field {field_name!r} must be an int; got {type(val).__name__}")
         if val % tp != 0:
             raise ValueError(
                 f"model config field {field_name!r}={val} is not "
@@ -202,9 +194,8 @@ def fuse_engine_kwargs(args: ProfileArgs, tp: int) -> dict[str, Any]:
 # Spin up / spin down
 # ---------------------------------------------------------------------------
 
-def spin_up(
-    args: ProfileArgs, tp: int
-) -> tuple[LLM, dict[str, Any], Path]:
+
+def spin_up(args: ProfileArgs, tp: int) -> tuple[LLM, dict[str, Any], Path]:
     """Construct a vLLM engine ready for profiling.
 
     Side effect: creates a temporary directory containing
@@ -262,9 +253,7 @@ def probe_limits(llm: LLM) -> RuntimeLimits:
     hf_cfg = getattr(cfg.model_config, "hf_text_config", None)
     if hf_cfg is None:
         hf_cfg = cfg.model_config.hf_config
-    cfg_dict = (
-        hf_cfg.to_dict() if hasattr(hf_cfg, "to_dict") else vars(hf_cfg)
-    )
+    cfg_dict = hf_cfg.to_dict() if hasattr(hf_cfg, "to_dict") else vars(hf_cfg)
     moe_params = probe_moe_params(cfg_dict)
     num_experts, top_k = moe_params or (None, None)
 
@@ -331,6 +320,7 @@ def spin_down(llm: LLM, tmpdir: Path | None = None) -> None:
             destroy_distributed_environment,
             destroy_model_parallel,
         )
+
         destroy_model_parallel()
         destroy_distributed_environment()
     except Exception as e:

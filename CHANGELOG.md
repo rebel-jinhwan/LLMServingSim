@@ -10,6 +10,89 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
   and nothing needs a `PYTHONPATH`. `scripts/docker-sim.sh` installs the
   checkout the same way, with `--no-deps` since that image's versions are
   pinned.
+- `llmservingsim/platforms/spec.py::DeviceSpec` — a device is now a validated object rather
+  than a dict parsed at the point of use, and its yaml is flat: `mem_size`,
+  `mem_bw`, `mem_latency`, `support_fp8` and `support_fp8_kv` at top level
+  (the nested `npu_mem:` block is the cluster config's shape, which these
+  values default). The two fp8 flags replace a list of KV dtypes: `auto` is
+  the model's dtype and always runs, every `fp8*` KV variant needs
+  `support_fp8_kv`, and the flags are separate because RBLN-CR03 runs an fp8
+  checkpoint with a bf16 KV cache. The profiler refuses `--dtype fp8` and an
+  fp8 KV cache on a device that says false, before an engine boots.
+  `platforms.devices()` builds every registered platform's specs once per
+  process, so a bad one names its own file at discovery: a `name` that does
+  not match the filename, a missing or non-numeric memory field, an unknown
+  key (`mem_util` scales a deployment, not a card, and used to be ignored
+  silently), a non-boolean flag, fp8 KV without fp8 support, or a device two
+  platforms both claim.
+- Out-of-tree platforms. A platform is now a
+  `llmservingsim/platforms/spec.py::PlatformSpec` subclass carrying `name`,
+  `granularity`, `is_available()`, a scheduler hook and the
+  directories it ships; one registry holds the built-ins (found by scanning the
+  subpackages of `llmservingsim/platforms/`, no registration list) and every class named by an
+  `llmservingsim.platforms` entry point. Built-ins register first and the first
+  name wins, so a plugin cannot replace one; a plugin that fails to import or
+  validate is logged and skipped. A plugin's `devices/`, `perf/` and `cluster/`
+  directories are searched after the in-tree ones, so an out-of-tree platform
+  ships its own device specs, perf bundles and cluster configs without a change
+  to LLMServingSim. Architecture catalogs stay in `llmservingsim/profiler/models/`: they
+  describe a model, not the hardware it runs on. `--cluster-config` now resolves by
+  name as well as by path, so a deployment a platform was calibrated for runs
+  without knowing which package holds its config. `$LLMSERVINGSIM_PLATFORM` and the instance's
+  `hardware` now take part in resolution, and the profiler and bench detect the
+  installed platform where the simulator, which models a platform rather than
+  running on one, does not.
+- `bench/examples/RBLN-CR03/Llama-3.2-1B-Instruct-pd` — the first prefill/decode
+  disaggregation example against real servers: Llama-3.2-1B-Instruct split over two
+  RBLN-CR03 with vllm-rbln's NIXL connector (host-bounce, upstream NIXL 1.3.1 over UCX)
+  behind vLLM's disaggregation proxy. Each calibration knob is fitted from one part of
+  the servers' Prometheus metrics; TTFT / TPOT / latency mean land at -0.6% / +0.9% /
+  +0.8%, from -50.8% / -19.7% / -22.9% uncalibrated. The vLLM-driven scheduler now sends a
+  request's KV once, on its final prefill step, rounded up to whole blocks, as NIXL does.
+- Prefill/decode disaggregation with the vLLM-driven scheduler and step-granularity
+  bundles, following vLLM's NIXL flow. A prefill instance runs requests with
+  `max_tokens=1` as the disaggregation proxy does; a decode instance carries vLLM's
+  `DecodeBenchConnector`, so its first step computes the last prompt token, where NIXL
+  leaves a request once its KV arrives. A prefill instance's step rows carry the KV
+  bytes, and `scripts/patches/chakra-step-trace.patch` (replacing
+  `chakra-single-row-trace.patch`) lets the converter send them from a `step` row.
+  Adds `configs/cluster/rbln_cr03_llama_3.2_1b_pd.json` and a Llama-3.2-1B-Instruct
+  step bundle for RBLN-CR03.
+- `llmservingsim/platforms/<vendor>/devices/<hardware>.yaml` — one spec per device (RTX4090,
+  RTXPRO6000, H100, RBLN-CR03) holding the hardware facts every deployment shares:
+  `npu_mem` defaults and the KV cache dtypes the device runs. A cluster config's
+  `npu_mem` is now optional for a device with a spec and overrides it key by key,
+  so the configs keep only deployment-specific values such as `mem_util`. The
+  simulator and the profiler refuse an unsupported `kv_cache_dtype`, the profiler
+  before booting (fp8 KV on RBLN-CR03 used to fail minutes into compilation).
+  `pytest tests/test_platforms.py` checks the specs and the merge.
+- `llmservingsim/platforms/` — platform plugins, the simulator's counterpart to vLLM's out-of-tree
+  platform plugins. One package per vendor with `simulator.py` (which scheduler runs)
+  and the device specs, perf bundles and cluster configs it ships, resolved by
+  `--platform`, by the `platform` key recorded in a bundle's `meta.yaml`, or by an
+  installed `llmservingsim.platforms` entry point. `cuda` is the
+  existing behaviour. `rbln` (Rebellions NPUs through vllm-rbln) profiles at **step
+  granularity** — one wall-clock time per padded forward into `tp<N>/step.csv`, TP on
+  real ranks with the collectives inside the measured time — and the trace generator
+  emits one `step` row per iteration, snapping a batch to the profiled prefill chunk and
+  decode bucket before the kv-axis interpolation.
+- `bench/examples/RBLN-CR03/` — the first non-CUDA examples, MiniMax-M2.5 on four
+  RBLN-CR03 (tp4 + EP) and gpt-oss-120b on one, from vLLM 0.26 + vllm-rbln runs and
+  step-granularity bundles driven by vllm-rbln's own scheduler. Two calibration knobs,
+  `--step-overhead-us` and `--prefill-step-overhead-us` (per instance in the cluster
+  config), carry the host time a step profile does not measure; raw bundles run 4-30%
+  fast, calibrated ones land within 1% on TTFT, TPOT and latency means. `--engine-kwargs`
+  on the profiler, bench and simulator passes the EngineArgs a deployment pins.
+- `llmservingsim/serving/core/vllm_scheduler.py` — `VllmScheduler` drives vLLM's own scheduler classes
+  the way `EngineCore` does on the host (`EngineArgs.create_engine_config()`,
+  `get_scheduler_cls()`, a `KVCacheConfig` sized from the memory model, then
+  `schedule()` / `update_from_output()` around the simulated forward). The `rbln`
+  platform pins it to vllm-rbln's `RBLNScheduler`, so that plugin's scheduling runs
+  verbatim; `--scheduler vllm` selects it for any platform. Against the in-tree port on
+  the same ShareGPT requests the batches are identical while nothing is preempted, and
+  differ under KV pressure only by vLLM's reserved null block (`python -m
+  serving.core.vllm_scheduler`). Needs vLLM importable in the simulator container; P/D
+  and `--prefix-storage` (KV connectors in vLLM) stay with the port.
 - `docs/scripts/check-rendered.mjs` — scans the built site for source syntax that
   survived into visible text (unparsed admonitions, bold, links, headings, table rows,
   doubled list markers, visible HTML comments, JSX brace leaks), plus a structural
@@ -63,8 +146,29 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
   `get_kv(1) * num_npus` and works before any `MemoryModel` exists
 
 ### Changed
+- `PlatformSpec.scheduler_cls` is now the `bind_scheduler()` hook, which
+  assigns `self.scheduler` and returns nothing; `spec.scheduler` is what
+  callers read, and reading it binds once. A platform that assigns nothing
+  gets the in-tree port of vLLM's scheduler, which is what CUDA vLLM does;
+  assigning something that is not a class is refused on the spot. A method rather than an attribute because binding may
+  import the vendor's package, which must not happen until a run asks for it.
+- The `rbln` platform now lives out of tree, in
+  [`llmservingsim-rbln`](https://github.com/rebel-jinhwan/llmservingsim-rbln),
+  which is the worked example of the platform plugin interface: it ships the
+  platform, the `RBLN-CR03` device spec, the profiled step bundles, the cluster
+  configs and the four calibrated end-to-end examples. Installing it registers
+  everything through the `llmservingsim.platforms` entry point; nothing in
+  LLMServingSim names Rebellions hardware any more. Step granularity,
+  prefill/decode over NIXL, the calibration knobs and the vLLM-driven scheduler
+  stay in tree, because none of them is vendor-specific.
+- `bench/examples/run.sh` and `bench/examples/validate.sh` take `EXAMPLES_DIR`,
+  so a platform that lives outside this repository keeps its calibrated
+  examples next to itself and still runs them through the in-tree runner.
+  Paths outside the repo root are passed through absolute instead of refused.
 - Every self-check moved into `tests/` and runs under **pytest**: the block
-  pool, the tiered KV cache manager and model config loading. They were
+  pool, the tiered KV cache manager, model config loading, the platform
+  registry and out-of-tree discovery, and the in-tree scheduler against
+  vLLM's own. They were
   `__main__` blocks and `_selftest()` functions inside the modules they checked
   (`python3 -m llmservingsim.serving.core.block_pool`, ...), each with its own
   entry point to remember. Plain `test_*()` functions that assert — no fixtures,

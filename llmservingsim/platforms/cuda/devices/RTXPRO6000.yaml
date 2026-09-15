@@ -1,0 +1,8 @@
+# NVIDIA RTX PRO 6000 Blackwell. Hardware facts every cluster config naming
+# this device shares; an instance's npu_mem block overrides any of them.
+name: RTXPRO6000
+mem_size: 96       # GB
+mem_bw: 1597       # GB/s
+mem_latency: 0     # ns
+support_fp8: true      # fp8 tensor cores
+support_fp8_kv: true   # and an fp8 KV cache in the attention kernel

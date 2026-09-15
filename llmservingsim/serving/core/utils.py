@@ -1,10 +1,8 @@
-import os
-from functools import lru_cache
-from time import time
 import json
+import os
+from functools import cache
 
 from .run_paths import input_path
-
 
 # Formatting string for a trace file's per-layer row. Kept in this
 # module because trace writers live across the codebase and import it
@@ -27,18 +25,18 @@ _FMT = (
     "{:<15} "  # output_size
     "{:<15} "  # comm_type
     "{:<15} "  # comm_size
-    "{:<15}"   # misc
+    "{:<15}"  # misc
     "\n"
 )
 
 
 def get_workload(batch, hardware, instance_id=0, event=False, workload_name=None, inputs_root=None):
     if event:
-        file_name = 'event_handler'
+        file_name = "event_handler"
     elif workload_name:
         file_name = workload_name
     else:
-        file_name = f'{hardware}/{batch.model}/instance{instance_id}_batch{batch.batch_id}'
+        file_name = f"{hardware}/{batch.model}/instance{instance_id}_batch{batch.batch_id}"
 
     if inputs_root is None:
         inputs_root = os.path.join(os.getcwd(), "inputs")
@@ -56,20 +54,49 @@ def header():
     separator is there to prevent.
     """
     return _FMT.format(
-        "Layername", "comp_time", "input_loc", "input_size",
-        "weight_loc", "weight_size", "output_loc", "output_size",
-        "comm_type", "comm_size", "misc",
+        "Layername",
+        "comp_time",
+        "input_loc",
+        "input_size",
+        "weight_loc",
+        "weight_size",
+        "output_loc",
+        "output_size",
+        "comm_type",
+        "comm_size",
+        "misc",
     )
 
 
-def formatter(layername, comp_time, input_loc, input_size, weight_loc, weight_size, output_loc, output_size, comm_type, comm_size, misc):
+def formatter(
+    layername,
+    comp_time,
+    input_loc,
+    input_size,
+    weight_loc,
+    weight_size,
+    output_loc,
+    output_size,
+    comm_type,
+    comm_size,
+    misc,
+):
     return _FMT.format(
-        layername, comp_time, input_loc, input_size, weight_loc,
-        weight_size, output_loc, output_size, comm_type, comm_size, misc,
+        layername,
+        comp_time,
+        input_loc,
+        input_size,
+        weight_loc,
+        weight_size,
+        output_loc,
+        output_size,
+        comm_type,
+        comm_size,
+        misc,
     )
 
 
-@lru_cache(maxsize=None)
+@cache
 def get_config(model_name):
     """Load a model architecture config, cached for the process lifetime.
 
@@ -92,7 +119,7 @@ def get_config(model_name):
     config = None
     for config_path in candidate_paths:
         try:
-            with open(config_path, 'r', encoding='utf-8') as f:
+            with open(config_path, encoding="utf-8") as f:
                 config = json.load(f)
             break
         except FileNotFoundError:

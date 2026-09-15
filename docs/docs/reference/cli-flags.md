@@ -23,6 +23,11 @@ heterogeneous instances. The other 15 flags are cluster-wide. See
 | --- | --- | --- | --- |
 | `--cluster-config` | path | `configs/cluster/single_node_single_instance.json` | Path to a cluster-config JSON. See **[Cluster config](./cluster-config)** |
 | `--network-backend` | choice | `analytical` | Network simulation backend. `analytical` (fast) or `ns3` (detailed, WIP) |
+| `--platform` | str | from the bundle | Platform plugin (`cuda`, or one installed through the `llmservingsim.platforms` entry-point group). Default: the `platform` recorded in each instance's perf bundle `meta.yaml`, else `cuda`. See **[Platforms](../simulator/platforms)** |
+| `--step-overhead-us` **(per-instance)** | float | `0` | Host time per step added to every row of a step-granularity profile; calibrate against a bench run. See **[Platforms](../simulator/platforms#calibrating-a-step-bundle-against-a-bench-run)** |
+| `--prefill-step-overhead-us` **(per-instance)** | float | `0` | Extra host time on a step that carries a prefill chunk (step-granularity profiles) |
+| `--engine-kwargs` | JSON | none | Extra vLLM `EngineArgs` for the vLLM-driven scheduler (`--scheduler vllm`, or a platform that names one), e.g. `'{"max_model_len": 65536}'`; an error with the in-tree scheduler |
+| `--scheduler` | choice | `platform` | `platform`: the scheduler the platform names (cuda: the in-tree port; an out-of-tree platform may name its vLLM plugin's own). `vllm`: drive the installed vLLM's own scheduler for any platform; needs vLLM importable |
 
 ## Batching and scheduling
 

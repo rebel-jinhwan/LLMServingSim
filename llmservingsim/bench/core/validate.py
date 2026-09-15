@@ -29,25 +29,36 @@ from llmservingsim.bench.core import plots
 
 
 def register_args(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--bench-dir", required=True, dest="bench_dir",
-                   help="Path to a finished bench run "
-                        "(bench/results/<run_id>/).")
-    p.add_argument("--sim-csv", required=True, dest="sim_csv",
-                   help="Simulator per-request CSV output.")
-    p.add_argument("--sim-log", required=True, dest="sim_log",
-                   help="Simulator log (parsed for per-tick running/waiting).")
-    p.add_argument("--output-subdir", default="validation",
-                   dest="output_subdir",
-                   help="Subdirectory under bench-dir to write plots/summary "
-                        "into (default: validation).")
-    p.add_argument("--prefix", default="",
-                   help="Filename prefix for plots / summary.")
-    p.add_argument("--title", default="vLLM vs LLMServingSim",
-                   help="Plot title suffix.")
-    p.add_argument("--log-level", default="INFO",
-                   dest="log_level",
-                   choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-                   help="Logger verbosity (default: INFO).")
+    p.add_argument(
+        "--bench-dir",
+        required=True,
+        dest="bench_dir",
+        help="Path to a finished bench run (bench/results/<run_id>/).",
+    )
+    p.add_argument(
+        "--sim-csv", required=True, dest="sim_csv", help="Simulator per-request CSV output."
+    )
+    p.add_argument(
+        "--sim-log",
+        required=True,
+        dest="sim_log",
+        help="Simulator log (parsed for per-tick running/waiting).",
+    )
+    p.add_argument(
+        "--output-subdir",
+        default="validation",
+        dest="output_subdir",
+        help="Subdirectory under bench-dir to write plots/summary into (default: validation).",
+    )
+    p.add_argument("--prefix", default="", help="Filename prefix for plots / summary.")
+    p.add_argument("--title", default="vLLM vs LLMServingSim", help="Plot title suffix.")
+    p.add_argument(
+        "--log-level",
+        default="INFO",
+        dest="log_level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Logger verbosity (default: INFO).",
+    )
 
 
 def run(args: argparse.Namespace) -> int:
@@ -68,8 +79,7 @@ def run(args: argparse.Namespace) -> int:
         bench_reqs = _load_bench_requests(bench_dir / "requests.jsonl")
         bench_ts = _load_bench_timeseries(bench_dir / "timeseries.csv")
         bench_ttft, bench_tpot, bench_lat = _bench_latencies(bench_reqs)
-    log.info("bench: %d requests, %d timeseries rows",
-             len(bench_reqs), len(bench_ts))
+    log.info("bench: %d requests, %d timeseries rows", len(bench_reqs), len(bench_ts))
 
     # ------------------------------------------------------------------
     # Simulator side.
@@ -78,15 +88,15 @@ def run(args: argparse.Namespace) -> int:
         sim_reqs = _load_sim_csv(Path(args.sim_csv))
         sim_ts = _load_sim_log(Path(args.sim_log))
         sim_ttft, sim_tpot, sim_lat = _sim_latencies(sim_reqs)
-    log.info("sim:   %d requests, %d timeseries rows",
-             len(sim_reqs), len(sim_ts))
+    log.info("sim:   %d requests, %d timeseries rows", len(sim_reqs), len(sim_ts))
 
     # ------------------------------------------------------------------
     # Plot + summary.
     # ------------------------------------------------------------------
     with log.stage("Rendering plots + summary"):
         plots.plot_throughput(
-            output_dir, args.prefix,
+            output_dir,
+            args.prefix,
             bench_t=[r["t"] for r in bench_ts],
             bench_prompt=[r["prompt_throughput"] for r in bench_ts],
             bench_gen=[r["gen_throughput"] for r in bench_ts],
@@ -96,7 +106,8 @@ def run(args: argparse.Namespace) -> int:
             title=args.title,
         )
         plots.plot_requests(
-            output_dir, args.prefix,
+            output_dir,
+            args.prefix,
             bench_t=[r["t"] for r in bench_ts],
             bench_running=[r["running"] for r in bench_ts],
             bench_waiting=[r["waiting"] for r in bench_ts],
@@ -106,13 +117,25 @@ def run(args: argparse.Namespace) -> int:
             title=args.title,
         )
         plots.plot_latency_cdfs(
-            output_dir, args.prefix,
-            bench_ttft, sim_ttft, bench_tpot, sim_tpot, bench_lat, sim_lat,
+            output_dir,
+            args.prefix,
+            bench_ttft,
+            sim_ttft,
+            bench_tpot,
+            sim_tpot,
+            bench_lat,
+            sim_lat,
             title=args.title,
         )
         summary_path = plots.write_summary(
-            output_dir, args.prefix,
-            bench_ttft, sim_ttft, bench_tpot, sim_tpot, bench_lat, sim_lat,
+            output_dir,
+            args.prefix,
+            bench_ttft,
+            sim_ttft,
+            bench_tpot,
+            sim_tpot,
+            bench_lat,
+            sim_lat,
         )
     log.success("Wrote plots + summary -> %s", output_dir)
     log.info("Summary: %s", summary_path)
@@ -122,6 +145,7 @@ def run(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 # Bench loaders
 # ---------------------------------------------------------------------------
+
 
 def _load_bench_requests(path: Path) -> list[dict]:
     out: list[dict] = []
@@ -138,14 +162,16 @@ def _load_bench_timeseries(path: Path) -> list[dict]:
     with path.open() as f:
         r = csv.DictReader(f)
         for row in r:
-            out.append({
-                "t": float(row["t"]),
-                "prompt_throughput": float(row["prompt_throughput"]),
-                "gen_throughput": float(row["gen_throughput"]),
-                "running": int(float(row["running"])),
-                "waiting": int(float(row["waiting"])),
-                "kv_cache_pct": float(row.get("kv_cache_pct", 0.0)),
-            })
+            out.append(
+                {
+                    "t": float(row["t"]),
+                    "prompt_throughput": float(row["prompt_throughput"]),
+                    "gen_throughput": float(row["gen_throughput"]),
+                    "running": int(float(row["running"])),
+                    "waiting": int(float(row["waiting"])),
+                    "kv_cache_pct": float(row.get("kv_cache_pct", 0.0)),
+                }
+            )
     return out
 
 
@@ -211,22 +237,25 @@ def _same_time_domain(a: float | None, b: float | None) -> bool:
 # Simulator loaders
 # ---------------------------------------------------------------------------
 
+
 def _load_sim_csv(path: Path) -> list[dict]:
     """Parse sim.csv. Times are in nanoseconds."""
     out: list[dict] = []
     with path.open() as f:
         r = csv.DictReader(f)
         for row in r:
-            out.append({
-                "input": int(row["input"]),
-                "output": int(row["output"]),
-                "arrival_ns": float(row["arrival"]),
-                "end_ns": float(row["end_time"]),
-                "latency_ns": float(row["latency"]),
-                "queuing_delay_ns": float(row["queuing_delay"]),
-                "ttft_ns": float(row["TTFT"]),
-                "tpot_ns": float(row["TPOT"]),
-            })
+            out.append(
+                {
+                    "input": int(row["input"]),
+                    "output": int(row["output"]),
+                    "arrival_ns": float(row["arrival"]),
+                    "end_ns": float(row["end_time"]),
+                    "latency_ns": float(row["latency"]),
+                    "queuing_delay_ns": float(row["queuing_delay"]),
+                    "ttft_ns": float(row["TTFT"]),
+                    "tpot_ns": float(row["TPOT"]),
+                }
+            )
     return out
 
 
@@ -251,12 +280,8 @@ def _sim_latencies(rows: list[dict]) -> tuple[list[float], list[float], list[flo
 # We accumulate running/waiting across instances at each tick and emit one
 # row per timestamp.
 _TS_RE = re.compile(r"^\[(\d+\.?\d*)s\]")
-_TPUT_RE = re.compile(
-    r"Avg prompt throughput:\s*(\d+\.?\d*).*generation throughput:\s*(\d+\.?\d*)"
-)
-_INST_RE = re.compile(
-    r"Running Instance\[(\d+)\]:\s*(\d+) reqs, Waiting:\s*(\d+) reqs"
-)
+_TPUT_RE = re.compile(r"Avg prompt throughput:\s*(\d+\.?\d*).*generation throughput:\s*(\d+\.?\d*)")
+_INST_RE = re.compile(r"Running Instance\[(\d+)\]:\s*(\d+) reqs, Waiting:\s*(\d+) reqs")
 
 
 def _load_sim_log(path: Path) -> list[dict]:
@@ -265,13 +290,15 @@ def _load_sim_log(path: Path) -> list[dict]:
 
     def _flush(c: dict | None) -> None:
         if c is not None and "t" in c:
-            rows.append({
-                "t": c["t"],
-                "prompt_throughput": c.get("prompt_throughput", 0.0),
-                "gen_throughput": c.get("gen_throughput", 0.0),
-                "running": c.get("running", 0),
-                "waiting": c.get("waiting", 0),
-            })
+            rows.append(
+                {
+                    "t": c["t"],
+                    "prompt_throughput": c.get("prompt_throughput", 0.0),
+                    "gen_throughput": c.get("gen_throughput", 0.0),
+                    "running": c.get("running", 0),
+                    "waiting": c.get("waiting", 0),
+                }
+            )
 
     with path.open() as f:
         for line in f:

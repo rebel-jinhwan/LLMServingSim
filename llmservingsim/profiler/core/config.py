@@ -27,7 +27,6 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-
 # ---------------------------------------------------------------------------
 # Constants shared with engine.py
 # ---------------------------------------------------------------------------
@@ -48,14 +47,14 @@ SHARD_FIELDS: list[str] = [
 # families spell these differently; we probe all variants and use the
 # first hit.
 MOE_NUM_EXPERTS_KEYS: tuple[str, ...] = (
-    "num_local_experts",     # Mixtral, PhiMoE
-    "num_experts",            # Qwen3 MoE
-    "n_routed_experts",       # DeepSeek V2/V3
+    "num_local_experts",  # Mixtral, PhiMoE
+    "num_experts",  # Qwen3 MoE
+    "n_routed_experts",  # DeepSeek V2/V3
 )
 MOE_TOP_K_KEYS: tuple[str, ...] = (
-    "num_experts_per_tok",    # Mixtral, PhiMoE, Qwen3 MoE
+    "num_experts_per_tok",  # Mixtral, PhiMoE, Qwen3 MoE
     "num_experts_per_token",  # some variants
-    "moe_k",                  # edge cases
+    "moe_k",  # edge cases
 )
 
 
@@ -82,6 +81,7 @@ def probe_moe_params(hf_cfg: dict[str, Any]) -> tuple[int, int] | None:
 # Catalog (loaded from architecture yaml)
 # ---------------------------------------------------------------------------
 
+
 class LayerEntry(BaseModel):
     """One row of the catalog.
 
@@ -89,6 +89,7 @@ class LayerEntry(BaseModel):
     Python class that the CUDA profiler will report, plus optional
     disambiguation (``within``) and TP-invariance (``tp_stable``).
     """
+
     # extra="forbid" catches typos in YAML early (e.g., `tp_stabe: true`).
     model_config = ConfigDict(extra="forbid")
 
@@ -112,6 +113,7 @@ class Catalog(BaseModel):
     Grouping is at the top level (rather than as an ``as:`` field on
     each entry) so that the file reads as four coherent blocks.
     """
+
     model_config = ConfigDict(extra="forbid")
 
     dense: dict[str, LayerEntry] = Field(default_factory=dict)
@@ -133,6 +135,7 @@ class Sequence(BaseModel):
     emit one iteration. Not used by the profiler itself — only
     validated here so typos in the yaml fail loudly before profiling.
     """
+
     model_config = ConfigDict(extra="forbid")
 
     prologue: list[str] = Field(default_factory=list)
@@ -144,8 +147,12 @@ class Sequence(BaseModel):
 
     def all_layers(self) -> list[str]:
         return [
-            *self.prologue, *self.pre_attn, *self.post_attn,
-            *self.mlp_dense, *self.mlp_moe, *self.head,
+            *self.prologue,
+            *self.pre_attn,
+            *self.post_attn,
+            *self.mlp_dense,
+            *self.mlp_moe,
+            *self.head,
         ]
 
 
@@ -156,6 +163,7 @@ class Architecture(BaseModel):
     ``sequence`` (ordered canonical names — used by the simulator's
     trace generator).
     """
+
     model_config = ConfigDict(extra="forbid")
 
     catalog: Catalog
@@ -166,7 +174,7 @@ class Architecture(BaseModel):
     # ------------------------------------------------------------------
 
     @model_validator(mode="after")
-    def _check_catalog(self) -> "Architecture":
+    def _check_catalog(self) -> Architecture:
         # Canonical names must be unique across ALL catalog groups.
         seen: set[str] = set()
         for _, name, _ in self.catalog.all_entries():
@@ -177,8 +185,7 @@ class Architecture(BaseModel):
         # Exactly one attention entry.
         if len(self.catalog.attention) != 1:
             raise ValueError(
-                f"catalog.attention must have exactly 1 entry; got "
-                f"{len(self.catalog.attention)}"
+                f"catalog.attention must have exactly 1 entry; got {len(self.catalog.attention)}"
             )
 
         # (vllm, within) pairs globally unique so layer matching is
@@ -229,9 +236,7 @@ def load_architecture(path: Path) -> Architecture:
     with path.open("r", encoding="utf-8") as f:
         raw = yaml.safe_load(f)
     if not isinstance(raw, dict):
-        raise ValueError(
-            f"{path}: top-level must be a mapping, got {type(raw).__name__}"
-        )
+        raise ValueError(f"{path}: top-level must be a mapping, got {type(raw).__name__}")
     return Architecture.model_validate(raw)
 
 
@@ -245,6 +250,7 @@ def architecture_hash(path: Path) -> str:
 # ---------------------------------------------------------------------------
 # Architecture auto-resolution from a HuggingFace model config
 # ---------------------------------------------------------------------------
+
 
 def _load_model_config(path: Path) -> dict[str, Any]:
     """Parse a model's config.json and return it as a dict.
@@ -274,8 +280,7 @@ def detect_model_type(model_config_path: Path) -> str:
     mt = cfg.get("model_type")
     if not mt:
         raise ValueError(
-            f"{model_config_path} has no ``model_type`` field. Use a "
-            f"HuggingFace config.json."
+            f"{model_config_path} has no ``model_type`` field. Use a HuggingFace config.json."
         )
     return str(mt)
 
@@ -320,6 +325,7 @@ def resolve_architecture_by_model_type(
 # ---------------------------------------------------------------------------
 # Profile session args (CLI, no yaml)
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class ProfileArgs:

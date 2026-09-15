@@ -11,7 +11,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from llmservingsim.serving.core.logger import (  # noqa: E402
-    configure_logger, get_logger, print_banner, progress, stage)
+    configure_logger,
+    get_logger,
+    print_banner,
+    progress,
+    stage,
+)
 
 
 def main() -> None:
@@ -26,10 +31,12 @@ def main() -> None:
     log.summary("TTFT mean: 7.71 s  |  TPOT mean: 55.8 ms")
     with stage("example work"):
         import time as _t
+
         _t.sleep(0.2)
     with progress("cooking", total=3) as bar:
         for _ in range(3):
             import time as _t
+
             _t.sleep(0.1)
             bar.advance()
 

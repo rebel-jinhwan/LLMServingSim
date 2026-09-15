@@ -27,7 +27,6 @@ import asyncio
 import datetime
 import hashlib
 import json
-import logging
 from pathlib import Path
 
 from llmservingsim.bench.core import logger as log
@@ -35,49 +34,93 @@ from llmservingsim.bench.core import recorder
 
 
 def register_args(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--model", required=True,
-                   help="HF model id passed verbatim to vllm.AsyncLLM.")
-    p.add_argument("--dataset", required=True,
-                   help="Path to a LLMServingSim-format JSONL workload "
-                        "(produced by `python -m llmservingsim.workloads.generators`).")
-    p.add_argument("--output-dir", required=True, dest="output_dir",
-                   help="Output directory for this run "
-                        "(meta.json/requests.jsonl/timeseries.csv).")
-    p.add_argument("--tensor-parallel-size", type=int, default=1,
-                   dest="tensor_parallel_size",
-                   help="vLLM tensor_parallel_size.")
-    p.add_argument("--data-parallel-size", type=int, default=1,
-                   dest="data_parallel_size",
-                   help="vLLM data_parallel_size (DP across engines).")
-    p.add_argument("--enable-expert-parallel", action="store_true",
-                   dest="enable_expert_parallel", default=False,
-                   help="vLLM enable_expert_parallel for MoE models.")
-    p.add_argument("--max-num-seqs", type=int, default=128,
-                   dest="max_num_seqs",
-                   help="vLLM scheduler max_num_seqs (per-engine running cap).")
-    p.add_argument("--max-num-batched-tokens", type=int, default=2048,
-                   dest="max_num_batched_tokens",
-                   help="vLLM scheduler max_num_batched_tokens.")
-    p.add_argument("--max-model-len", type=int, default=None,
-                   dest="max_model_len",
-                   help="vLLM max_model_len (None = model's max).")
-    p.add_argument("--dtype", default="bfloat16",
-                   help="Model dtype.")
-    p.add_argument("--kv-cache-dtype", default="auto",
-                   dest="kv_cache_dtype",
-                   help="vLLM kv_cache_dtype.")
-    p.add_argument("--seed", type=int, default=42,
-                   help="Sampling seed for vLLM.")
-    p.add_argument("--tick-seconds", type=float, default=1.0,
-                   dest="tick_seconds",
-                   help="Stat logger downsample interval (timeseries.csv row spacing).")
-    p.add_argument("--num-reqs", type=int, default=0,
-                   dest="num_reqs",
-                   help="Cap on number of requests from the dataset (0 = all).")
-    p.add_argument("--log-level", default="INFO",
-                   dest="log_level",
-                   choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-                   help="Logger verbosity (default: INFO).")
+    p.add_argument("--model", required=True, help="HF model id passed verbatim to vllm.AsyncLLM.")
+    p.add_argument(
+        "--dataset",
+        required=True,
+        help="Path to a LLMServingSim-format JSONL workload "
+        "(produced by `python -m llmservingsim.workloads.generators`).",
+    )
+    p.add_argument(
+        "--output-dir",
+        required=True,
+        dest="output_dir",
+        help="Output directory for this run (meta.json/requests.jsonl/timeseries.csv).",
+    )
+    p.add_argument(
+        "--tensor-parallel-size",
+        type=int,
+        default=1,
+        dest="tensor_parallel_size",
+        help="vLLM tensor_parallel_size.",
+    )
+    p.add_argument(
+        "--data-parallel-size",
+        type=int,
+        default=1,
+        dest="data_parallel_size",
+        help="vLLM data_parallel_size (DP across engines).",
+    )
+    p.add_argument(
+        "--enable-expert-parallel",
+        action="store_true",
+        dest="enable_expert_parallel",
+        default=False,
+        help="vLLM enable_expert_parallel for MoE models.",
+    )
+    p.add_argument(
+        "--max-num-seqs",
+        type=int,
+        default=128,
+        dest="max_num_seqs",
+        help="vLLM scheduler max_num_seqs (per-engine running cap).",
+    )
+    p.add_argument(
+        "--max-num-batched-tokens",
+        type=int,
+        default=2048,
+        dest="max_num_batched_tokens",
+        help="vLLM scheduler max_num_batched_tokens.",
+    )
+    p.add_argument(
+        "--max-model-len",
+        type=int,
+        default=None,
+        dest="max_model_len",
+        help="vLLM max_model_len (None = model's max).",
+    )
+    p.add_argument("--dtype", default="bfloat16", help="Model dtype.")
+    p.add_argument(
+        "--kv-cache-dtype", default="auto", dest="kv_cache_dtype", help="vLLM kv_cache_dtype."
+    )
+    p.add_argument(
+        "--engine-kwargs",
+        default=None,
+        help="JSON object of extra AsyncEngineArgs fields, for knobs without a "
+        "flag of their own (block_size, num_gpu_blocks_override, ...).",
+    )
+    p.add_argument("--seed", type=int, default=42, help="Sampling seed for vLLM.")
+    p.add_argument(
+        "--tick-seconds",
+        type=float,
+        default=1.0,
+        dest="tick_seconds",
+        help="Stat logger downsample interval (timeseries.csv row spacing).",
+    )
+    p.add_argument(
+        "--num-reqs",
+        type=int,
+        default=0,
+        dest="num_reqs",
+        help="Cap on number of requests from the dataset (0 = all).",
+    )
+    p.add_argument(
+        "--log-level",
+        default="INFO",
+        dest="log_level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Logger verbosity (default: INFO).",
+    )
 
 
 def run(args: argparse.Namespace) -> int:
@@ -105,6 +148,7 @@ def run(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 # Dataset loading
 # ---------------------------------------------------------------------------
+
 
 def _load_dataset(path: Path, cap: int = 0) -> list[dict]:
     """Read a LLMServingSim-format JSONL workload.
@@ -138,6 +182,7 @@ def _load_dataset(path: Path, cap: int = 0) -> list[dict]:
 # Async driver
 # ---------------------------------------------------------------------------
 
+
 async def _drive(args: argparse.Namespace, requests: list[dict], output_dir: Path) -> None:
     # Imports deferred so `validate` / `--help` works without vLLM installed.
     from vllm import AsyncEngineArgs, SamplingParams
@@ -158,21 +203,18 @@ async def _drive(args: argparse.Namespace, requests: list[dict], output_dir: Pat
         kv_cache_dtype=args.kv_cache_dtype,
         seed=args.seed,
         disable_log_stats=False,
+        **(json.loads(args.engine_kwargs) if args.engine_kwargs else {}),
     )
     engine_kwargs_for_meta = _engine_kwargs_for_meta(engine_args)
 
     with log.stage("Booting AsyncLLM"):
         with log.capture_stdio():
-            engine = AsyncLLM.from_engine_args(
-                engine_args, stat_loggers=[BenchStatLogger]
-            )
+            engine = AsyncLLM.from_engine_args(engine_args, stat_loggers=[BenchStatLogger])
     started_at = datetime.datetime.utcnow().isoformat() + "Z"
 
     try:
         with log.stage(f"Submitting {len(requests)} requests"):
-            records = await _submit_all(
-                engine, requests, SamplingParams, TokensPrompt
-            )
+            records = await _submit_all(engine, requests, SamplingParams, TokensPrompt)
     finally:
         with log.stage("Shutting AsyncLLM down"):
             engine.shutdown()
@@ -214,7 +256,9 @@ async def _drive(args: argparse.Namespace, requests: list[dict], output_dir: Pat
     recorder.write_timeseries(output_dir, header, rows)
     log.success(
         "%d requests, %d timeseries rows -> %s",
-        len(records), len(rows), output_dir,
+        len(records),
+        len(rows),
+        output_dir,
     )
 
 
@@ -288,11 +332,19 @@ def _record_from_metrics(idx: int, req: dict, metrics) -> dict:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _engine_kwargs_for_meta(engine_args) -> dict:
     fields = (
-        "model", "tensor_parallel_size", "data_parallel_size",
-        "enable_expert_parallel", "max_num_seqs", "max_num_batched_tokens",
-        "max_model_len", "dtype", "kv_cache_dtype", "seed",
+        "model",
+        "tensor_parallel_size",
+        "data_parallel_size",
+        "enable_expert_parallel",
+        "max_num_seqs",
+        "max_num_batched_tokens",
+        "max_model_len",
+        "dtype",
+        "kv_cache_dtype",
+        "seed",
     )
     return {k: getattr(engine_args, k, None) for k in fields}
 
@@ -353,7 +405,7 @@ def _config_fields(obj) -> dict:
             continue
         try:
             out[name] = _normalize(getattr(obj, name))
-        except Exception as exc:                     # a property may raise
+        except Exception as exc:  # a property may raise
             out[name] = f"<unreadable: {type(exc).__name__}>"
     return out
 
@@ -377,7 +429,7 @@ def _resolved_config(engine) -> dict:
         except Exception:
             continue
         if value is None or isinstance(value, (bool, int, float, str)):
-            out[name] = sub                      # a scalar on VllmConfig itself
+            out[name] = sub  # a scalar on VllmConfig itself
         else:
             fields = _config_fields(value)
             out[name] = fields if fields else sub
@@ -417,6 +469,7 @@ def _hardware_facts() -> dict:
     facts = {}
     try:
         import torch
+
         facts["torch_version"] = torch.__version__
         facts["cuda_version"] = getattr(torch.version, "cuda", None)
         if torch.cuda.is_available():
@@ -425,6 +478,14 @@ def _hardware_facts() -> dict:
             props = torch.cuda.get_device_properties(0)
             facts["device_total_memory_bytes"] = props.total_memory
             facts["device_capability"] = f"{props.major}.{props.minor}"
+        else:
+            # Other hardware describes itself through its platform, so no
+            # vendor SDK is imported here.
+            from llmservingsim.platforms import detect_platform
+
+            platform = detect_platform()
+            if platform is not None:
+                facts["platform"] = platform.name
     except Exception as exc:
         facts["error"] = f"{type(exc).__name__}: {exc}"
     return facts
@@ -433,6 +494,7 @@ def _hardware_facts() -> dict:
 def _vllm_version() -> str:
     try:
         import vllm
+
         return getattr(vllm, "__version__", "unknown")
     except Exception:
         return "unknown"

@@ -25,16 +25,121 @@ Source = "https://github.com/casys-kaist/LLMServingSim"
 [project.optional-dependencies]
 # The profiler and bench need vLLM and its stack, which is installed per
 # environment (scripts/install-vllm.sh, or the container image).
-dev = ["pytest"]
+#
+# ruff and mypy are pinned here and nowhere else: CI, pre-commit and a local
+# checkout all get the tooling from `pip install -e '.[dev]'`, so a bump is one
+# edit, in the commit that also carries whatever reformatting it wants.
+dev = [
+    "pytest",
+    "ruff==0.16.7",
+    "mypy==2.3.1",
+]
 
 [tool.setuptools.packages.find]
 include = ["llmservingsim*"]
 exclude = ["llmservingsim.profiler.v0*"]
 
 [tool.setuptools.package-data]
+"llmservingsim.platforms" = ["*/devices/*.yaml"]
 "llmservingsim.profiler" = ["models/*.yaml"]
 
 # So a bare `pytest` from the repo root collects the unit checks and nothing
 # else -- docs/ and llmservingsim/profiler/v0/ are not test trees.
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# ---------------------------------------------------------------------------
+# Ruff is the formatter and linter of record. It replaces the "no enforced
+# formatter, match the surrounding style" rule AGENTS.md carried before:
+# `ruff format` decides layout, `ruff check` decides the rest. Run both from
+# the repo root:
+#   ruff format .
+#   ruff check .
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+# The simulator container ships Python 3.10, so UP must not rewrite past it.
+target-version = "py310"
+
+# Python only. Ruff also formats fenced code blocks inside Markdown, and the
+# snippets in AGENTS.md and under docs/ are illustrative prose, not source.
+include = ["*.py", "*.pyi"]
+
+extend-exclude = [
+    "astra-sim",                  # submodule, built in place; AGENTS.md says do not edit it
+    "llmservingsim/profiler/v0",  # the pre-rewrite profiler, kept for reference only
+    "docs/build",
+    "docs/.docusaurus",
+    "outputs",
+]
+
+[tool.ruff.lint]
+# Deliberately narrow: pyflakes, pycodestyle errors, import sorting, pyupgrade
+# and flake8-bugbear. Enough to catch dead imports, shadowed names and idioms
+# that are actually wrong, without turning the first sweep into a diff nobody
+# can review. Widen one rule family at a time, each in its own commit.
+select = ["E", "F", "I", "UP", "B"]
+ignore = [
+    # The formatter owns line length, and it will not split a string or a
+    # comment. Every E501 left after `ruff format` is a long log message, a
+    # long f-string, or a result-summary line whose column alignment is the
+    # point -- rewrapping those buys nothing.
+    "E501",
+    # zip(..., strict=) is a real check, but whether each call site must have
+    # equal-length inputs is a per-site judgement, and guessing wrong turns a
+    # silent truncation into a crash. Worth a pass of its own, not this one.
+    "B905",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# The simulator is wired together with `import *`, and the re-exports are
+# transitive: llmservingsim/serving/__main__.py reaches RequestStatus through
+# llmservingsim.serving.core.scheduler, which reaches it through
+# llmservingsim.serving.core.request. Enumerating the names is a refactor with
+# its own validate.sh run, not part of a formatting sweep. Delete these entries
+# one file at a time.
+"llmservingsim/serving/__main__.py" = ["F403", "F405"]
+"llmservingsim/serving/core/graph_generator.py" = ["F403", "F405"]
+"llmservingsim/serving/core/pim_model.py" = ["F403", "F405"]
+"llmservingsim/serving/core/power_model.py" = ["F403", "F405"]
+"llmservingsim/serving/core/scheduler.py" = ["F403", "F405"]
+"llmservingsim/serving/core/trace_generator.py" = ["F403", "F405"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["llmservingsim"]
+
+# ---------------------------------------------------------------------------
+# mypy is opt-in, one module at a time. The codebase predates any type checking
+# and is nowhere near clean, so `ignore_errors` is on globally: mypy still
+# parses everything (so an opted-in module gets real types for what it imports)
+# but only reports on the modules listed below. To tighten, annotate a module
+# and add it to the override -- never by flipping the global default, which
+# would dump thousands of errors into CI in one go. Run `mypy` from the root.
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.10"
+files = ["llmservingsim"]
+# astra-sim is a submodule (AGENTS.md: do not edit it) and
+# llmservingsim/profiler/v0 is the legacy profiler, kept only for reference.
+exclude = "(?x)(^astra-sim/|^llmservingsim/profiler/v0/)"
+# vLLM, torch, rich, matplotlib and the Chakra converter are optional at
+# simulate time and absent in CI, which has no GPU and no ASTRA-Sim build.
+ignore_missing_imports = true
+warn_unused_configs = true
+ignore_errors = true
+
+# Opted in: modules that already carry annotations throughout. They get
+# disallow_untyped_defs / disallow_incomplete_defs and nothing more.
+# warn_return_any is deliberately left off: pydantic and yaml hand back Any at
+# the library boundary, so the rule fires there rather than on anything we
+# wrote.
+[[tool.mypy.overrides]]
+module = [
+    "llmservingsim.serving.core.logger",
+    "llmservingsim.bench.core.logger",
+    "llmservingsim.profiler.core.logger",
+    "llmservingsim.profiler.core.config",
+]
+ignore_errors = false
+disallow_untyped_defs = true
+disallow_incomplete_defs = true

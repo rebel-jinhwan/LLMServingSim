@@ -21,18 +21,19 @@ registering it in ``categories_for()``.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import ClassVar, Iterator
+from typing import ClassVar
 
 from llmservingsim.profiler.core.config import Architecture, LayerEntry, ProfileArgs
 from llmservingsim.profiler.core.engine import RuntimeLimits
 from llmservingsim.profiler.core.hooks.batch import Shot
 from llmservingsim.profiler.core.hooks.timings import TimingSample
 
-
 # ---------------------------------------------------------------------------
 # Point types — one per category, shaped by the CSV schema for that kind.
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class DensePoint:
@@ -74,6 +75,7 @@ Point = DensePoint | SequencePoint | AttentionPoint | ExpertPoint
 # Grid helpers (shared)
 # ---------------------------------------------------------------------------
 
+
 def _power_of_two_grid(max_value: int) -> list[int]:
     """``[1, 2, 4, 8, ..., largest_pow2_le_max]``."""
     values: list[int] = []
@@ -109,6 +111,7 @@ def _token_grid(max_tokens: int) -> list[int]:
 # ---------------------------------------------------------------------------
 # Category base
 # ---------------------------------------------------------------------------
+
 
 class Category(ABC):
     """Abstract base. Subclasses fill in ``name``, ``sink_filename``,
@@ -171,6 +174,7 @@ def _entry_dict(entries: dict[str, LayerEntry]) -> dict[str, dict]:
 # Dense
 # ---------------------------------------------------------------------------
 
+
 class DenseCategory(Category):
     """Token-linear layers: embedding, qkv_proj, MLP, layernorm, ..."""
 
@@ -211,6 +215,7 @@ class DenseCategory(Category):
 # ---------------------------------------------------------------------------
 # Per-sequence
 # ---------------------------------------------------------------------------
+
 
 class SequenceCategory(Category):
     """Sequence-linear layers: lm_head, sampler.
@@ -257,9 +262,9 @@ class SequenceCategory(Category):
 
 # Starting points for each axis (smallest non-zero value).
 # Grids double from here up to an axis-specific cap.
-_ATTN_CHUNK_START = 16      # smallest prefill chunk we profile
-_ATTN_N_DECODE_START = 1    # smallest decode batch
-_ATTN_KV_START = 16        # smallest KV context (for both prefill & decode)
+_ATTN_CHUNK_START = 16  # smallest prefill chunk we profile
+_ATTN_N_DECODE_START = 1  # smallest decode batch
+_ATTN_KV_START = 16  # smallest KV context (for both prefill & decode)
 
 # Must match HOST_ENGINE_DEFAULTS["block_size"] (16). Used for
 # block-aligned KV-budget feasibility checks so shots are only
@@ -318,15 +323,19 @@ class AttentionCategory(Category):
         # override via --attention-chunk-factor / --attention-kv-factor
         # if you want denser sampling. n_decode stays on doubling.
         chunk_vals = _geometric_grid(
-            limits.max_num_batched_tokens, _ATTN_CHUNK_START,
+            limits.max_num_batched_tokens,
+            _ATTN_CHUNK_START,
             factor=args.attention_chunk_factor,
         )
         n_dec_vals = _geometric_grid(
-            limits.max_num_seqs, _ATTN_N_DECODE_START,
+            limits.max_num_seqs,
+            _ATTN_N_DECODE_START,
         )
         kv_cap = min(args.attention_max_kv, limits.max_model_len)
         kv_vals = _geometric_grid(
-            kv_cap, _ATTN_KV_START, factor=args.attention_kv_factor,
+            kv_cap,
+            _ATTN_KV_START,
+            factor=args.attention_kv_factor,
         )
 
         for chunk in chunk_vals:
@@ -366,9 +375,7 @@ class AttentionCategory(Category):
                         # so we stay strictly below.
                         #
                         # 1. Combined sum bound (advisory).
-                        if chunk + n_dec > (
-                            limits.max_num_batched_tokens + limits.max_num_seqs
-                        ):
+                        if chunk + n_dec > (limits.max_num_batched_tokens + limits.max_num_seqs):
                             continue
                         # 2. Request count vs max_num_seqs. vLLM V1
                         # pre-allocates input_batch for MSQ sequences;
@@ -382,21 +389,17 @@ class AttentionCategory(Category):
                             continue
                         if n_dec > 0 and 1 + kv_d + 1 > limits.max_model_len:
                             continue
+
                         # 4. KV cache block budget. Each request
                         # rounds up to a whole block, so block-aligned
                         # totals can be up to ~2× the raw KV tokens
                         # for tiny requests. Compute exactly.
                         def _aligned(total_len: int) -> int:
-                            return ((total_len + _BLOCK_SIZE - 1)
-                                    // _BLOCK_SIZE) * _BLOCK_SIZE
-                        prefill_block_toks = (
-                            _aligned(chunk + kv_p) if chunk > 0 else 0
-                        )
-                        decode_block_toks = (
-                            n_dec * _aligned(1 + kv_d) if n_dec > 0 else 0
-                        )
-                        if (prefill_block_toks + decode_block_toks
-                                > limits.num_cache_tokens):
+                            return ((total_len + _BLOCK_SIZE - 1) // _BLOCK_SIZE) * _BLOCK_SIZE
+
+                        prefill_block_toks = _aligned(chunk + kv_p) if chunk > 0 else 0
+                        decode_block_toks = n_dec * _aligned(1 + kv_d) if n_dec > 0 else 0
+                        if prefill_block_toks + decode_block_toks > limits.num_cache_tokens:
                             continue
                         yield Shot.attention(
                             prefill_chunk=chunk,
@@ -461,6 +464,7 @@ class AttentionCategory(Category):
 # MoE
 # ---------------------------------------------------------------------------
 
+
 class ExpertCategory(Category):
     """MoE block (gate + grouped experts), keyed by
     (tokens, activated_experts)."""
@@ -488,7 +492,9 @@ class ExpertCategory(Category):
             # +1 headroom) + cache.
             if n_tokens >= limits.max_model_len:
                 continue
-            if ((n_tokens + _BLOCK_SIZE - 1) // _BLOCK_SIZE) * _BLOCK_SIZE > limits.num_cache_tokens:
+            if (
+                (n_tokens + _BLOCK_SIZE - 1) // _BLOCK_SIZE
+            ) * _BLOCK_SIZE > limits.num_cache_tokens:
                 continue
             for activated in _power_of_two_grid(num_experts):
                 # Minimum activations per call is top_k (every token
@@ -529,6 +535,7 @@ class ExpertCategory(Category):
 # ---------------------------------------------------------------------------
 # Category registry
 # ---------------------------------------------------------------------------
+
 
 def categories_for(arch: Architecture, tp: int) -> list[Category]:
     """Return the list of categories that should run for this (arch, tp).

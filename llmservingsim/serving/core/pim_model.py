@@ -1,15 +1,11 @@
-import math
-from functools import reduce
-import re
-from time import time
+from .logger import get_logger
 from .request import *
 from .utils import *
-from .logger import get_logger
-import pandas as pd
+
 
 def convert_value(v: str):
     try:
-        if '.' in v:
+        if "." in v:
             return float(v)
         return int(v)
     except ValueError:
@@ -27,7 +23,7 @@ def load_flat_config(logger, path: str):
     logger.debug("Configuring %s", spec_name)
     data = {}
 
-    with open(path, "r") as f:
+    with open(path) as f:
         for line in f:
             # remote comment
             line = strip_comment(line)
@@ -44,6 +40,7 @@ def load_flat_config(logger, path: str):
                 data[key] = value
 
     return data
+
 
 class PIMModel:
     def __init__(self, node_id, mem_size, pim_config_path):
@@ -78,9 +75,9 @@ class PIMModel:
         channel_size = pim_config["channel_size"]
         data_rate = pim_config["data_rate"]
 
-        # memory channel capacity 
+        # memory channel capacity
         devices_per_rank = bus_width / device_width
-        page_size = columns * device_width / 8;  # page size in bytes
+        page_size = columns * device_width / 8  # page size in bytes
         megs_per_bank = page_size * (rows / 1024) / 1024
         megs_per_rank = megs_per_bank * banks * devices_per_rank
 
@@ -94,32 +91,34 @@ class PIMModel:
         self.ch_capacity = channel_size / 1024
 
         # memory channel bandwidth & capacity
-        self.ch_bw = bus_width / 8 * data_rate / 1000 # per_channel (GB/s)
+        self.ch_bw = bus_width / 8 * data_rate / 1000  # per_channel (GB/s)
 
         self.num_ch = self.mem_size / self.ch_capacity
         self.mem_bw = self.num_ch * self.ch_bw
-        
+
         ### read latency
         CL = pim_config["CL"]
         tCK = pim_config["tCK"]
         self.read_latency = CL * tCK
 
     def get_config(self):
-        return {"mem_size": self.mem_size, 
-                "mem_bw": self.mem_bw,
-                "mem_latency": self.read_latency, 
-                "dimm_size": self.ch_capacity}
-    
+        return {
+            "mem_size": self.mem_size,
+            "mem_bw": self.mem_bw,
+            "mem_latency": self.read_latency,
+            "dimm_size": self.ch_capacity,
+        }
+
     def get_pim_power(self):
-        idle_power = self.config["idle_power"] / 1000 # W
-        peak_power = self.config["peak_power"] / 1000 # W
+        idle_power = self.config["idle_power"] / 1000  # W
+        peak_power = self.config["peak_power"] / 1000  # W
         self.logger.debug("idle_power: %.2f W", idle_power)
         self.logger.debug("peak_power: %.2f W", peak_power)
         return (idle_power, peak_power)
-    
+
     def get_pim_latency(self, n_head, kv_head, head_dim, L, channel_split=1):
-        return self.estimate_with_linear(n_head, kv_head, head_dim, L, channel_split) # ns
-    
+        return self.estimate_with_linear(n_head, kv_head, head_dim, L, channel_split)  # ns
+
     def estimate_with_linear(self, n_head, kv_head, head_dim, L, channel_split=1):
         """Estimate PIM attention latency using linear model.
 
@@ -142,22 +141,10 @@ class PIMModel:
         """
         # Baseline coefficients (Llama-3.1-8B: n_head=32, kv_head=8, head_dim=128)
         attn_model = {
-            "LPDDR4X_2GB_4266_pim": {
-                "slope": 432.4458,
-                "intercept": 33918.1734
-            },
-            "DDR4_8GB_3200_pim": {
-                "slope": 333.2538,
-                "intercept": 30675.2739
-            },
-            "LPDDR5_2GB_6400_pim": {
-                "slope": 282.4338,
-                "intercept": 15996.7018
-            },
-            "HBM2_1GB_2000_pim": {
-                "slope": 242.0548,
-                "intercept": 14513.5015
-            },
+            "LPDDR4X_2GB_4266_pim": {"slope": 432.4458, "intercept": 33918.1734},
+            "DDR4_8GB_3200_pim": {"slope": 333.2538, "intercept": 30675.2739},
+            "LPDDR5_2GB_6400_pim": {"slope": 282.4338, "intercept": 15996.7018},
+            "HBM2_1GB_2000_pim": {"slope": 242.0548, "intercept": 14513.5015},
         }
 
         if self.spec_name not in attn_model:
@@ -183,4 +170,3 @@ class PIMModel:
         intercept = base_intercept * kv_scale
 
         return (slope * L + intercept) / channel_split  # float, ns
-

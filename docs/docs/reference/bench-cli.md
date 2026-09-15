@@ -59,6 +59,7 @@ comparison is not apples-to-apples.
 | `--dtype` | string | `bfloat16` | Model dtype |
 | `--kv-cache-dtype` | string | `auto` | vLLM `kv_cache_dtype` |
 | `--seed` | int | `42` | Sampling seed |
+| `--engine-kwargs` | JSON | none | Extra `AsyncEngineArgs` fields for knobs without a flag, e.g. `'{"block_size": 8192, "num_gpu_blocks_override": 82}'` |
 
 :::note[Defaults differ from `python -m llmservingsim.serving`]
 `bench run` defaults `--dtype` to `bfloat16` outright, where the

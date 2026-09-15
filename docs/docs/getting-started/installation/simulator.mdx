@@ -111,7 +111,8 @@ different binary:
 
 `scripts/docker-sim.sh` already runs `pip install -e . --no-deps`, which puts
 the packages on the import path as `llmservingsim.serving`,
-`llmservingsim.profiler`, `llmservingsim.bench` and `llmservingsim.workloads`.
+`llmservingsim.platforms`, `llmservingsim.profiler`, `llmservingsim.bench`
+and `llmservingsim.workloads`.
 Outside the container, do it once in your environment:
 
 ```bash
@@ -121,7 +122,8 @@ pip install -e .
 Nothing is copied: the packages keep running from the checkout, so `python -m
 llmservingsim.serving` works from any working directory without a `PYTHONPATH`.
 
-Then run the bundled smoke test from inside the simulator container:
+Then run the unit checks (`pytest`) and the bundled smoke test from inside
+the simulator container:
 
 ```bash
 python -m llmservingsim.serving \
