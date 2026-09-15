@@ -7,7 +7,7 @@
   entry-point group, for example in a vendor package's pyproject.toml::
 
       [project.entry-points."llmservingsim.platforms"]
-      acme = "llmservingsim_acme:AcmePlatform"
+      example = "llmservingsim_example:ExamplePlatform"
 
   The target must be a ``PlatformSpec`` subclass (not an instance), must
   construct with no arguments, and its ``name`` must equal the entry-point

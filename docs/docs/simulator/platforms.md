@@ -220,17 +220,17 @@ and nothing but the entry point differs:
 ```python
 from platforms.spec import PlatformSpec
 
-class AcmePlatform(PlatformSpec):
-    name = "acme"
+class ExamplePlatform(PlatformSpec):
+    name = "example"
     granularity = "step"
 
     def is_available(self):
-        return importlib.util.find_spec("acme_sdk") is not None
+        return importlib.util.find_spec("example_sdk") is not None
 
     @property
     def profile_cls(self):
-        from acme_pkg.profile import AcmeProfile
-        return AcmeProfile
+        from example_pkg.profile import ExampleProfile
+        return ExampleProfile
 ```
 
 | Member | Default | Override when |
@@ -252,7 +252,7 @@ Out of tree, one entry point registers the whole thing:
 
 ```toml
 [project.entry-points."llmservingsim.platforms"]
-acme = "acme_pkg:AcmePlatform"
+example = "example_pkg:ExamplePlatform"
 ```
 
 The entry-point name must equal the spec's `name`. Anything the platform
@@ -265,7 +265,7 @@ Cluster configs resolve by name, so a deployment the platform was
 calibrated for is run without a path:
 
 ```bash
-python -m serving --cluster-config acme_x1_llama_tp4.json ...
+python -m serving --cluster-config example_llama_tp4.json ...
 ```
 
 A path is a location, absolute or relative to the repo root. A bare name
