@@ -6,7 +6,7 @@ title: Output bundle
 # Output bundle
 
 Each profile run produces a directory tree under
-`profiler/perf/<HARDWARE>/<MODEL>/<variant>/`. This is **the contract
+`configs/perf/<HARDWARE>--<MODEL>--<variant>/`. This is **the contract
 between the profiler and the simulator**: anything that lands here
 in the right format is consumable by
 `trace_generator._load_perf_db()`, regardless of how it was produced.
@@ -14,7 +14,7 @@ in the right format is consumable by
 ## Folder layout
 
 ```
-profiler/perf/<HARDWARE>/<MODEL>/<variant>/
+configs/perf/<HARDWARE>--<MODEL>--<variant>/
 ├── meta.yaml
 └── tp<N>/                        # one folder per profiled TP degree
     ├── dense.csv
@@ -212,7 +212,7 @@ value, and `kv_big` extends its log-4x bins to the observed maximum.
 ## `meta.yaml`
 
 Sibling of the `tp<N>/` folders. Below is a real one, from
-`profiler/perf/RTXPRO6000/Qwen/Qwen3-32B/bf16/`, with the per-TP fit
+`configs/perf/RTXPRO6000--Qwen--Qwen3-32B--bf16/`, with the per-TP fit
 block trimmed to one entry:
 
 ```yaml
@@ -353,7 +353,7 @@ time.
 
 ```mermaid
 flowchart LR
-    PERF["perf/&lt;hw&gt;/&lt;model&gt;/&lt;variant&gt;/"] --> RESOLVE["resolve_variant<br/>(dtype + kv_cache_dtype)"]
+    PERF["perf/&lt;hw&gt;--&lt;model&gt;--&lt;variant&gt;/"] --> RESOLVE["resolve_variant<br/>(dtype + kv_cache_dtype)"]
     RESOLVE --> LOAD["_load_perf_db()"]
     LOAD --> CACHE["_perf_db_cache<br/>(in-memory)"]
     LOAD --> META["read meta.yaml<br/>warn if runtime &gt; sweep bounds"]

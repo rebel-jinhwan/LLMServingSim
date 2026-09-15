@@ -10,6 +10,7 @@ from .power_model import PowerModel, total_ring_data
 from .pim_model import PIMModel
 from .logger import get_logger
 from .run_paths import input_path
+from platforms import bundle_dir_name
 import bisect
 from dataclasses import dataclass, field
 
@@ -27,7 +28,18 @@ logger = get_logger("TraceGenerator")
 # Profile-data paths + variant resolution (mirrors the profiler).
 # ----------------------------------------------------------------------
 
-_PROFILER_ROOT_REL = "../profiler"
+_PERF_ROOT_REL = "../configs/perf"
+
+# Extra bundle roots, searched before the in-tree one. A cluster config's
+# ``perf_dir`` fills this in once per run (config_builder resolves it against
+# the config file, since the simulator runs from astra-sim/).
+_extra_perf_roots: list[str] = []
+
+
+def set_perf_roots(roots):
+    """Replace the extra bundle roots searched ahead of ``configs/perf``."""
+    global _extra_perf_roots
+    _extra_perf_roots = [str(r) for r in roots]
 
 _DTYPE_SHORT = {
     "bfloat16": "bf16", "bf16": "bf16",
@@ -76,15 +88,19 @@ def _arch_yaml_path(model_type):
 
 
 def _variant_root(hardware, model, variant):
-    """In-tree ``profiler/perf`` first, then bundles a platform ships in its
-    own ``perf/``. A miss returns the in-tree path so errors name it."""
-    in_tree = f"{_PROFILER_ROOT_REL}/perf/{hardware}/{model}/{variant}"
+    """The cluster config's ``perf_dir`` roots first, then the in-tree
+    ``configs/perf``, then bundles a platform ships in its own ``perf/``.
+    A miss returns the in-tree path so errors name it."""
+    from platforms import resource_dirs
+    name = bundle_dir_name(hardware, model, variant)
+    in_tree = f"{_PERF_ROOT_REL}/{name}"
+    for root in _extra_perf_roots:
+        if os.path.isdir(candidate := os.path.join(root, name)):
+            return candidate
     if os.path.isdir(in_tree):
         return in_tree
-    from platforms import resource_dirs
     for d in resource_dirs("perf"):
-        candidate = d / hardware / model / variant
-        if candidate.is_dir():
+        if (candidate := d / name).is_dir():
             return str(candidate)
     return in_tree
 
@@ -165,7 +181,7 @@ class PowerAccumulator:
 # Perf DB loading and lookup (new per-category format)
 # ======================================================================
 #
-# New layout under profiler/perf/<hw>/<model>/<variant>/:
+# New layout under configs/perf/<hw>--<org>--<model>--<variant>/:
 #     meta.yaml                       profiler settings, effective engine kwargs
 #     tp<N>/dense.csv                 layer, tokens, time_us
 #     tp<N>/per_sequence.csv          layer, sequences, time_us
@@ -303,7 +319,7 @@ def _build_1d_table(df, layer_col, key_col):
     pandas path was not: ``sort_values`` defaults to an unstable
     quicksort, so which of two rows sharing a key survived
     ``drop_duplicates`` was unspecified. No bundle under
-    ``profiler/perf/`` currently carries a duplicate key in any category,
+    ``configs/perf/`` currently carries a duplicate key in any category,
     so this changes no existing lookup; for a CSV that gained rows from a
     partial re-profile, last-wins takes the newer measurement.
     """
@@ -423,7 +439,7 @@ def _check_tp_coverage(perf_db, tp_needed, hardware, model, variant):
     if missing:
         raise FileNotFoundError(
             f"No profile data for tp={missing} under "
-            f"perf/{hardware}/{model}/{variant}/. Re-run the profiler with "
+            f"perf/{bundle_dir_name(hardware, model, variant)}/. Re-run the profiler with "
             f"TP_DEGREES including {','.join(str(t) for t in missing)}."
         )
 
@@ -906,7 +922,8 @@ def _lookup_moe(perf_db, tokens, activated_experts):
     if tbl is None:
         raise KeyError(
             f"Missing moe profile. Check that moe.csv exists under "
-            f"perf/{perf_db['hardware']}/{perf_db['model']}/{perf_db['variant']}/tp{tp_eff}/."
+            f"perf/{bundle_dir_name(perf_db['hardware'], perf_db['model'], perf_db['variant'])}"
+            f"/tp{tp_eff}/."
         )
     ae_vals = tbl["activated_experts_vals"]
     rows = tbl["rows"]
@@ -953,12 +970,12 @@ def _build_trace_ctx(hardware, model, config, tp_size, pp_size, local_ep, ep_tot
         if pp_size != stages:
             raise ValueError(
                 f"pp_size={pp_size} but the step-granularity profile "
-                f"{hardware}/{model}/{variant} holds {stages} pipeline stage(s); "
+                f"{hardware}--{model}--{variant} holds {stages} pipeline stage(s); "
                 f"a step profile is taken at the deployment's pipeline depth")
         if enable_attn_offloading:
             raise ValueError(
                 f"Attention offloading is not supported with the step-granularity "
-                f"profile {hardware}/{model}/{variant}: it attaches to per-layer rows")
+                f"profile {hardware}--{model}--{variant}: it attaches to per-layer rows")
 
     n_embd = config['hidden_size']
     n_head = config['num_attention_heads']

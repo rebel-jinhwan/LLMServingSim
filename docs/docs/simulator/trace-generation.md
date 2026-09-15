@@ -50,7 +50,7 @@ flowchart LR
 The profiler writes per-category CSVs at:
 
 ```
-profiler/perf/<hardware>/<model>/<variant>/tp<N>/{
+configs/perf/<hardware>--<model>--<variant>/tp<N>/{
   dense.csv,
   per_sequence.csv,
   attention.csv,
@@ -129,7 +129,7 @@ So:
 - `--dtype bfloat16 --kv-cache-dtype fp8` → `bf16-kvfp8`
 - `--dtype fp8 --kv-cache-dtype fp8` → `fp8-kvfp8`
 
-If the resolved folder doesn't exist under `profiler/perf/...`, the
+If the resolved folder doesn't exist under `configs/perf/...`, the
 simulator raises a clear `FileNotFoundError` pointing at the missing
 variant. Either profile that combo with `--variant <name>` on the
 profiler, or pick a different dtype combination.

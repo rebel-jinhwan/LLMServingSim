@@ -15,7 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from platforms import load_platform
+from platforms import bundle_dir_name, load_platform
 from profiler.core import logger as log
 from profiler.core.categories import (
     CATEGORY_BY_NAME,
@@ -39,21 +39,19 @@ from profiler.core.writer import (
 # ---------------------------------------------------------------------------
 
 def _variant_root(out_root: Path, args: ProfileArgs) -> Path:
-    """Build ``<out_root>/<hardware>/<model_path>/<variant>/``.
+    """Build ``<out_root>/<hardware>--<org>--<model>--<variant>/``.
 
-    Model path preserves the HuggingFace ``org/model`` layout so the
-    simulator's loader (which already expects this shape) doesn't need
-    to change. Local paths are normalized to their directory name.
+    One flat directory per bundle, spelled by ``bundle_dir_name`` -- the
+    same name the simulator looks for. A local model path is normalized to
+    its directory name; an HF id keeps its ``org/model``, which the name
+    joins with ``--`` the way the HuggingFace cache does.
     """
-    # If `args.model` is a local path (contains "/" and exists on disk),
-    # use its final component as the output subfolder; otherwise treat
-    # as HF id verbatim.
     model_as_path = Path(args.model)
     if model_as_path.exists() and model_as_path.is_dir():
         model_subpath = model_as_path.name
     else:
         model_subpath = args.model
-    return out_root / args.hardware / model_subpath / args.effective_variant
+    return out_root / bundle_dir_name(args.hardware, model_subpath, args.effective_variant)
 
 
 # ---------------------------------------------------------------------------

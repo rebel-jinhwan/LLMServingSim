@@ -12,9 +12,11 @@ Rules a platform must follow, built in or not:
   import vLLM, torch or a vendor SDK only inside the members that need them.
 - ``name`` is lowercase, unique, and equal to the entry-point name.
 - Anything the platform ships as files lives next to the spec's module:
-  ``devices/<hardware>.yaml``, ``perf/<hardware>/<model>/<variant>/`` bundles
+  ``devices/<hardware>.yaml``, ``perf/<hardware>--<model>--<variant>/`` bundles
   and ``cluster/<name>.json`` deployments. The simulator and the
-  profiler search those after the in-tree locations. Architecture catalogs
+  profiler search those after the in-tree locations. Only ``devices/`` needs
+  to be in the package; perf bundles kept elsewhere are named by a cluster
+  config's ``perf_dir``. Architecture catalogs
   (``profiler/models/``) are deliberately not among them: a catalog describes
   a model, not the hardware it runs on, so a missing one is contributed
   upstream rather than shipped by a vendor.
@@ -139,7 +141,7 @@ class DeviceSpec:
     because a device differs from another device in its numbers, while a
     platform differs from another platform in its code.
 
-    ``name`` is the cluster config's ``hardware``, the ``profiler/perf/<name>/``
+    ``name`` is the cluster config's ``hardware``, the ``configs/perf/<name>--...``
     folder and the file's own stem, all the same string, so a run that names
     the hardware resolves the spec, and the spec names the platform.
     """

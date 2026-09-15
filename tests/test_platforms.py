@@ -5,7 +5,8 @@ Needs only pyyaml. Out-of-tree discovery is exercised with fake entry points,
 so no plugin has to be installed:
 a valid plugin with its own devices/, perf/ and cluster/; a name that does not
 match its entry point; a target that is not a PlatformSpec; a plugin that
-fails to import; and a plugin reusing a built-in name.
+fails to import; and a plugin reusing a built-in name. A cluster config's
+perf_dir is resolved against the config file and searched first.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import logging
 import os
 import tempfile
 import types
+import unittest
 from pathlib import Path
 
 import platforms
@@ -90,12 +92,59 @@ def _check_device_validation() -> None:
             raise AssertionError(f"a device spec with {needle!r} was accepted: {text!r}")
 
 
+def test_bundle_dir_name() -> None:
+    """One flat folder per bundle, org and name joined the way the
+    HuggingFace cache spells it."""
+    assert platforms.bundle_dir_name("RTX4090", "meta-llama/Llama-3.1-8B", "bf16") \
+        == "RTX4090--meta-llama--Llama-3.1-8B--bf16"
+    # A local model directory has no org, so the name is three parts.
+    assert platforms.bundle_dir_name("D1", "Llama-3.1-8B", "fp8") == "D1--Llama-3.1-8B--fp8"
+    print("ok: a bundle is one folder, <hardware>--<org>--<model>--<variant>")
+
+
+def test_perf_dir_from_cluster_config() -> None:
+    """A cluster config's perf_dir is resolved against the config file and
+    searched before the in-tree configs/perf."""
+    try:
+        from serving.core.config_builder import _resolve_perf_dirs
+        from serving.core.trace_generator import _variant_root, set_perf_roots
+    except ImportError:
+        raise unittest.SkipTest("the simulator's own dependencies are absent")
+
+    root = Path(tempfile.mkdtemp(prefix="perf_root_"))
+    (root / "bundles" / "EXAMPLE-D1--org--model--bf16").mkdir(parents=True)
+    (root / "deploy").mkdir()
+    config = root / "deploy" / "example.json"
+    config.write_text("{}\n")
+
+    roots = _resolve_perf_dirs("../bundles", str(config))
+    assert roots == [str(root / "bundles")], roots
+    assert _resolve_perf_dirs(None, str(config)) == []
+    try:
+        _resolve_perf_dirs("../nope", str(config))
+    except FileNotFoundError as e:
+        assert "perf_dir" in str(e) and "nope" in str(e), e
+    else:
+        raise AssertionError("a perf_dir that is not a directory was accepted")
+
+    try:
+        set_perf_roots(roots)
+        assert _variant_root("EXAMPLE-D1", "org/model", "bf16") \
+            == str(root / "bundles" / "EXAMPLE-D1--org--model--bf16")
+        # A miss names the in-tree path, so the error says where it looked.
+        assert _variant_root("EXAMPLE-D1", "org/model", "fp8") \
+            == "../configs/perf/EXAMPLE-D1--org--model--fp8"
+    finally:
+        set_perf_roots([])
+    print("ok: perf_dir resolves against the cluster config and is searched first")
+
+
 def test_plugin_discovery() -> None:
     root = Path(tempfile.mkdtemp(prefix="platform_plugin_"))
     (root / "devices").mkdir()
     (root / "devices" / "EXAMPLE-D1.yaml").write_text(
         "name: EXAMPLE-D1\nmem_size: 32\nmem_bw: 500\nmem_latency: 0\n")
-    (root / "perf" / "EXAMPLE-D1" / "org" / "model" / "bf16").mkdir(parents=True)
+    (root / "perf" / "EXAMPLE-D1--org--model--bf16").mkdir(parents=True)
     (root / "cluster").mkdir()
     (root / "cluster" / "example_one_node.json").write_text("{}\n")
 

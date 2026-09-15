@@ -35,7 +35,7 @@ def write_meta(output_dir: Path, **fields: Any) -> None:
         and CUDA context vLLM subtracts from its budget become visible.
     ``hardware``
         Accelerator name, total memory, compute capability, CUDA/torch
-        versions -- enough to match a run against a ``profiler/perf/<hw>/``
+        versions -- enough to match a run against a ``configs/perf/<hw>--...``
         bundle.
     ``resolved_config``
         vLLM's whole resolved ``VllmConfig``, one key per sub-config, with

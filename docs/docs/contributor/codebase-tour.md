@@ -75,22 +75,18 @@ llmservingsim/profiler/
 ├── __main__.py              CLI dispatch (profile / slice)
 ├── core/                    internals (runner, engine, categories, fit_alpha)
 ├── models/<model_type>.yaml Architecture catalogs (one per HF model_type)
-└── profile.sh               Editable user template
-
-profiler/                    Not packaged: bulk data, like configs/
-├── perf/<hw>/<model>/...    Output bundles (CSV per category)
-└── power/                   nvidia-smi / IPMI power-logging shell helpers
+└── profile.sh               Editable user template  (bundles land in configs/perf/)
 ```
 
 **Where to touch by intent:**
 
 | Intent | Edit |
 | --- | --- |
-| Add a new hardware target | Run the profiler with `HARDWARE=` set; output lands in `profiler/perf/<hw>/`. See **[Profiler / Adding hardware](/docs/profiler/adding-hardware)** |
-| Add a new model architecture | Drop a YAML in `llmservingsim/profiler/models/<model_type>.yaml`. See **[Profiler / Adding model architecture](/docs/profiler/adding-model-architecture)** |
-| Change the skew alpha fit | `llmservingsim/profiler/core/fit_alpha.py` |
-| Change what categories get profiled | `llmservingsim/profiler/core/categories.py` + `llmservingsim/profiler/core/runner.py` |
-| Change output CSV columns | `core/writer.py` (and `_load_perf_db()` in `llmservingsim/serving/core/trace_generator.py` to consume them) |
+| Add a new hardware target | Run the profiler with `HARDWARE=` set; output lands in `configs/perf/<hw>--...`. See **[Profiler / Adding hardware](/docs/profiler/adding-hardware)** |
+| Add a new model architecture | Drop a YAML in `profiler/models/<model_type>.yaml`. See **[Profiler / Adding model architecture](/docs/profiler/adding-model-architecture)** |
+| Change the skew alpha fit | `profiler/core/fit_alpha.py` |
+| Change what categories get profiled | `profiler/core/categories.py` + `profiler/core/runner.py` |
+| Change output CSV columns | `core/writer.py` (and `_load_perf_db()` in `serving/core/trace_generator.py` to consume them) |
 
 ## Bench (`llmservingsim/bench/` and `bench/`)
 
@@ -115,6 +111,7 @@ are emitted). For day-to-day "did my change regress?" use, see
 configs/
 ├── cluster/<name>.json      Cluster topology (the main thing)
 ├── model/<org>/<name>.json  Model architecture (subset of HF config.json)
+├── perf/<hw>--<org>--<model>--<variant>/   Profiled latencies (CSV per category)
 └── pim/<name>.ini           PIM device specs (DRAMSim3 format)
 ```
 

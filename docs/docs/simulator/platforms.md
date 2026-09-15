@@ -171,7 +171,7 @@ directly.
 
 A platform can describe the devices it runs on, one yaml per device in its
 `devices/` directory, named exactly as the cluster config's `hardware` and
-the `profiler/perf/<hardware>/` folder. Each one is read into a `DeviceSpec`.
+the `configs/perf/<hardware>--...` bundles. Each one is read into a `DeviceSpec`.
 A device is data rather than behaviour, so there is no subclass to write: a
 device differs from another device in its numbers, while a platform differs
 from another platform in its code.
@@ -235,7 +235,7 @@ and nothing but the entry point differs:
 <pkg>/__init__.py               class <Vendor>Platform(PlatformSpec)
 <pkg>/profile.py                class <Vendor>Profile(PlatformProfile)
 <pkg>/devices/<hardware>.yaml   memory facts, fp8 support
-<pkg>/perf/<hardware>/...       perf bundles the platform ships, optional
+<pkg>/perf/<hardware>--<org>--<model>--<variant>/   bundles it ships, optional
 <pkg>/cluster/*.json            cluster configs, found by name, optional
 ```
 
@@ -288,7 +288,30 @@ The entry-point name must equal the spec's `name`. Anything the platform
 ships as files lives next to its module: `devices/`, `perf/` and
 `cluster/` are searched after the in-tree locations, so a plugin can ship
 its own device specs, perf bundles and cluster configs without touching
-LLMServingSim. Architecture catalogs are not on that list on purpose: a
+LLMServingSim.
+
+Only `devices/` has to be inside the package: it is what makes a cluster
+config's `hardware` resolve, and pip ships nothing outside the package.
+Perf bundles have their own lifecycle (re-measured per SDK release, often
+private, potentially large), so they are found by path instead. A cluster
+config's `perf_dir` names the root holding them, relative to the config
+file itself, and the simulator searches it before `configs/perf/` and
+before any package's `perf/`:
+
+```json
+{
+  "perf_dir": "../../../perf",
+  "nodes": [ ... ]
+}
+```
+
+A vendor therefore keeps `perf/` at its repository root, or in a private
+data repository, and every deployment shipped next to it says so. The
+profiler writes into `./perf` under the working directory, so profiling
+from that repository root lands where the configs already point.
+
+Cluster configs need nothing: `--cluster-config` takes a path, and an
+example's `config.json` is one. Architecture catalogs are not on that list on purpose: a
 catalog describes a model, not the hardware it runs on, so a `model_type`
 that is missing belongs in `profiler/models/` upstream.
 

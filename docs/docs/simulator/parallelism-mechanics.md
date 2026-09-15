@@ -144,7 +144,7 @@ rank. The combine ALLTOALL gathers expert outputs back to the
 originating ranks. Both are scoped to the EP dimension.
 
 Each EP rank gets a per-rank latency from
-`profiler/perf/<hw>/<model>/<variant>/tp1/moe.csv` keyed on its
+`configs/perf/<hw>--<model>--<variant>/tp1/moe.csv` keyed on its
 **local** token count (after dispatch) and the **activated experts**
 per token. Ranks execute in parallel and synchronize at the ALLTOALL
 barrier, slower ranks gate the others.

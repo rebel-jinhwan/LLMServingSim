@@ -36,7 +36,21 @@ generates derived ASTRA-Sim input files (`network.yml`,
 | `link_bw` | float or float[] | ✓ |  | ASTRA-Sim topology link bandwidth in **GB/s**. Scalars apply to every topology dimension; arrays must match the final `network.yml::npus_count` rank |
 | `link_latency` | float or float[] | ✓ |  | ASTRA-Sim topology link latency in **ns**. Scalars apply to every topology dimension; arrays must match the final `network.yml::npus_count` rank |
 | `nodes` | array | ✓ |  | Length must equal `num_nodes` |
+| `perf_dir` | string or string[] | optional | absent | Extra profile-bundle roots, each relative to this config file. Searched before `configs/perf/`. A path that is not a directory is refused when the config is read |
 | `cxl_mem` | object | optional | absent | CXL memory expansion (see below) |
+
+`perf_dir` is how a deployment finds bundles that do not live in tree: a
+platform kept in its own repository keeps `perf/` at that repository's root,
+and each config next to it says where. The profiler writes into `./perf`
+under the working directory, so profiling from that root lands where the
+configs already point.
+
+```json
+{
+  "perf_dir": "../../../perf",
+  "nodes": [ ... ]
+}
+```
 
 Example: if `network.yml` will end up with `npus_count: [4, 2]`, you may set
 `link_bw: [900, 100]` and `link_latency: [0, 20000]` to assign different
@@ -162,7 +176,7 @@ Three rules the table cannot show:
 | Field | Type | Description |
 | --- | --- | --- |
 | `model_name` | string | HF id. Must match a config at `configs/model/<model_name>.json` (see **[Model config](./model-config)**) |
-| `hardware` | string | Hardware label. Must match `profiler/perf/<hardware>/`, and names the device spec `platforms/<vendor>/devices/<hardware>.yaml` when one exists |
+| `hardware` | string | Hardware label. Must be the `<hardware>` prefix of a bundle in `configs/perf/`, and names the device spec `platforms/<vendor>/devices/<hardware>.yaml` when one exists |
 | `pd_type` | string \| null | `"prefill"`, `"decode"`, or `null` (combined) |
 
 ### NPU memory (`npu_mem`)
@@ -305,7 +319,7 @@ instances[i].dtype   >   --dtype   >   model config torch_dtype   >   bfloat16
 
 The resolved value must be one of `float16` / `bfloat16` / `float32` /
 `fp8` / `int8`, and it selects the profile **variant folder**, so the
-matching `profiler/perf/<hardware>/<model>/<variant>/tp<N>/` bundle has
+matching `configs/perf/<hardware>--<model>--<variant>/tp<N>/` bundle has
 to exist. `kv_cache_dtype` is validated per instance too — only `auto`
 or `fp8`.
 
@@ -393,7 +407,7 @@ Structural, in `config_builder.py`:
 - `dp_group` must be a string or `null`, and all instances sharing one
   `dp_group` must agree on `tp_size`, `pp_size` **and** `ep_size`.
 - Hardware folder must exist at
-  `profiler/perf/<hardware>/<model_name>/<variant>/tp<tp_size>/`.
+  `configs/perf/<hardware>--<model_name>--<variant>/tp<tp_size>/`.
 
 Memory, in `memory_model.py`, evaluated **per GPU** (weights are
 already sharded by `tp_size` / `ep_size`):

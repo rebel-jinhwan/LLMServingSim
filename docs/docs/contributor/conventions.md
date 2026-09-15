@@ -188,7 +188,7 @@ If you touch `trace_generator.py` or `graph_generator.py`:
   where the kernel is sampled; the blend decides how two samples
   combine; the kernel is linear in each axis. Log blending biased
   estimates 11.6-14.4% high against 2.3-3.7% for linear, measured
-  leave-one-out across every bundle in `profiler/perf/`.
+  leave-one-out across every bundle in `configs/perf/`.
 
 ## Commit and PR style
 

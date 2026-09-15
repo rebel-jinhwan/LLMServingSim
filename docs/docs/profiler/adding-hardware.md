@@ -6,7 +6,7 @@ title: Adding new hardware
 # Adding new hardware
 
 This page is the workflow for bringing up a brand-new hardware target
-that doesn't have a profile bundle in `profiler/perf/<HARDWARE>/`
+that doesn't have a profile bundle in `configs/perf/<HARDWARE>--...`
 yet. There are two distinct paths depending on whether vLLM supports
 the hardware:
 
@@ -74,7 +74,7 @@ For unusual GPU types, you may need to adjust:
 ```
 
 Wait. Drink coffee. Output lands in
-`profiler/perf/<HARDWARE>/<MODEL>/<variant>/`. See
+`configs/perf/<HARDWARE>--<MODEL>--<variant>/`. See
 **[Running → Expected runtime](./running#expected-runtime)** for
 ballpark times.
 
@@ -223,7 +223,7 @@ heterogeneous-decode measurements.
 
   ```text
   FileNotFoundError: No profile data for tp=[4] under
-  perf/<hw>/<model>/<variant>/. Re-run the profiler with TP_DEGREES
+  perf/<hw>--<model>--<variant>/. Re-run the profiler with TP_DEGREES
   including 4.
   ```
 
@@ -254,7 +254,7 @@ Once you've synthesized a CSV bundle:
 ## Where this gets used
 
 Once your CSV bundle lives at
-`profiler/perf/<HARDWARE>/<MODEL>/<variant>/`, the simulator picks
+`configs/perf/<HARDWARE>--<MODEL>--<variant>/`, the simulator picks
 it up automatically when the cluster config names matching values:
 
 ```json
