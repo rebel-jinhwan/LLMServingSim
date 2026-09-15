@@ -567,10 +567,3 @@ class Scheduler:
                     req.tpot,
                     req.itl
                 ])
-
-
-def main():
-    pass
-
-if __name__ == "__main__":
-    main()
