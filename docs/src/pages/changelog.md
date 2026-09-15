@@ -24,6 +24,13 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
   Paths outside the repo root are passed through absolute instead of refused.
 
 ### Added
+- `platforms/spec.py::DeviceSpec` — a device is now a validated object rather
+  than a dict parsed at the point of use. `platforms.devices()` builds every
+  registered platform's `devices/*.yaml` once per process, so a bad spec names
+  its own file at discovery: a `name` that does not match the filename, a
+  missing or unknown `npu_mem` key (`mem_util` scales a deployment, not a card,
+  and used to be ignored silently), an empty `kv_cache_dtypes`, or a device two
+  platforms both claim.
 - Out-of-tree platforms. A platform is now a
   `platforms/spec.py::PlatformSpec` subclass carrying `name`,
   `granularity`, `is_available()`, `profile_cls`, `scheduler_cls` and the

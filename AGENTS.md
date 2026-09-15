@@ -158,18 +158,26 @@ per platform, in tree or out, and one registry holding both.
   `layerwise_profile`) and `step_grid(args, limits)` (raises by default).
   The base imports nothing heavy at module scope, so `platforms` still
   loads in the simulator container.
-- `devices/<hardware>.yaml`: one per device, named exactly as the cluster
-  config's `hardware` and the `profiler/perf/<hardware>/` folder. It holds
-  hardware facts only: `npu_mem` defaults (`mem_size`, `mem_bw`,
-  `mem_latency`) and `kv_cache_dtypes`. `platforms.load_device()` finds it
-  across every registered platform and reports the owning platform, so a
-  cluster config naming the hardware is enough to resolve the platform;
-  `resolve_npu_mem()` merges it under the instance's `npu_mem` in
-  `config_builder.py`, key by key; the simulator and the profiler both
-  refuse a `kv_cache_dtype` outside the list, the profiler before booting.
-  A device with no spec still works when the cluster config states
-  `npu_mem` in full. Power stays in the node's `power` block. Do not add a
-  spec value you have not measured without saying so in the file.
+- `platforms/spec.py::DeviceSpec` is one piece of hardware, read from a
+  platform's `devices/<hardware>.yaml`. A device is **data, not behaviour**:
+  a device differs from another device in its numbers, while a platform
+  differs from another platform in its code, so there is one yaml per device
+  and no subclass. It holds hardware facts only: `npu_mem` defaults
+  (`NPU_MEM_KEYS`: `mem_size`, `mem_bw`, `mem_latency`) and
+  `kv_cache_dtypes`. `DeviceSpec.from_yaml()` refuses a name that does not
+  match the filename, a missing `npu_mem` key, an unknown one (`mem_util`
+  belongs to a deployment, not a device, and would otherwise be silently
+  ignored) and an empty `kv_cache_dtypes`. `platforms.devices()` builds them
+  all once per process, so a bad yaml or a device two platforms both claim
+  fails at discovery rather than at the point of use;
+  `platforms.load_device()` looks one up and reports the owning platform, so
+  a cluster config naming the hardware is enough to resolve the platform;
+  `npu_mem_with()` (through `resolve_npu_mem()` in `config_builder.py`)
+  merges the instance's `npu_mem` over it key by key; the simulator and the
+  profiler both refuse a `kv_cache_dtype` outside the list, the profiler
+  before booting. A device with no spec still works when the cluster config
+  states `npu_mem` in full. Power stays in the node's `power` block. Do not
+  add a spec value you have not measured without saying so in the file.
 - `resource_dirs(kind)` is how anything a platform ships as files is found:
   `devices/`, `perf/<hardware>/<model>/<variant>/` bundles,
   `models/<model_type>.yaml` catalogs and `configs/cluster/<name>.json`,
