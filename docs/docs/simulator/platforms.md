@@ -233,6 +233,7 @@ and nothing but the entry point differs:
 
 ```
 <pkg>/__init__.py               class <Vendor>Platform(PlatformSpec)
+<pkg>/profile.py                class <Vendor>Profile(PlatformProfile)
 <pkg>/devices/<hardware>.yaml   memory facts, fp8 support
 <pkg>/perf/<hardware>/...       perf bundles the platform ships, optional
 <pkg>/cluster/*.json            cluster configs, found by name, optional
@@ -247,6 +248,11 @@ class ExamplePlatform(PlatformSpec):
 
     def is_available(self):
         return importlib.util.find_spec("example_sdk") is not None
+
+    @property
+    def profile_cls(self):
+        from example_pkg.profile import ExampleProfile
+        return ExampleProfile
 ```
 
 | Member | Default | Override when |
@@ -254,11 +260,13 @@ class ExamplePlatform(PlatformSpec):
 | `name` | `""` | Always: lowercase, unique, equal to the entry-point name |
 | `granularity` | `"layer"` | The device runs a compiled graph per padded shape |
 | `is_available()` | `False` | The platform can probe for its hardware |
+| `profile_cls` | raises | Always, to profile on the hardware |
 | `bind_scheduler()` | binds nothing, so the in-tree port of vLLM's `Scheduler` runs | The platform's vLLM plugin schedules differently: assign `self.scheduler` |
 | `resource_dir` | the spec module's directory | Never, in practice |
 
 Each hook has a resolved counterpart that callers read rather than the hook
-itself: reading `spec.scheduler` runs `bind_scheduler()` once, which assigns `self.scheduler`
+itself: `spec.profile` builds and checks `profile_cls`, and reading
+`spec.scheduler` runs `bind_scheduler()` once, which assigns `self.scheduler`
 or leaves it alone, in which case the in-tree port is bound. Binding is a
 method and not an attribute because it may have to import the vendor's
 package, which must not happen until a run asks for it.
@@ -295,3 +303,38 @@ A path is a location, absolute or relative to the repo root. A bare name
 is a lookup: the in-tree `configs/cluster/` first, then each registered
 platform's `cluster/`. A path that names a directory is never searched for by name,
 so a mistyped directory fails where it was typed.
+
+### The profiler side
+
+`platforms.profile.PlatformProfile` is the profiler-side interface a
+spec's `profile_cls` implements. Its defaults are CUDA vLLM's, so a
+subclass overrides only what differs:
+
+| Member | Default | Override when |
+| --- | --- | --- |
+| `ENGINE_KWARGS` | `{}` | The platform needs engine kwargs of its own, merged under the CLI's |
+| `TP_EMULATION` | `True` | TP cannot be emulated on one device, because the collectives are inside what is timed |
+| `scheduler_output_cls()` | vLLM's `SchedulerOutput` | The model runner reads a subclass of it |
+| `device_info()` | `{"gpu": "unknown"}` | Always: it identifies the device in `meta.yaml` |
+| `measure(run_forward, iterations, catalog_slice)` | abstract | Always: how a shot is timed |
+| `step_grid(args, limits)` | raises | The platform is step-granularity, where it is required |
+
+```python
+from llmservingsim.platforms.profile import PlatformProfile
+
+class ExampleProfile(PlatformProfile):
+    TP_EMULATION = False
+
+    def device_info(self):
+        return {"gpu": example_sdk.device_name(0)}
+
+    def measure(self, run_forward, iterations, catalog_slice):
+        ...  # time run_forward() and return one TimingSample("step", ...) dict
+
+    def step_grid(self, args, limits):
+        ...  # yield the Shots the runner can actually execute
+```
+
+The spec refuses a `profile_cls` that is not a `PlatformProfile`, and a
+step-granularity platform whose profile leaves `step_grid` at the
+default.

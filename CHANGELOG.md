@@ -27,7 +27,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
   platforms both claim.
 - Out-of-tree platforms. A platform is now a
   `llmservingsim/platforms/spec.py::PlatformSpec` subclass carrying `name`,
-  `granularity`, `is_available()`, a scheduler hook and the
+  `granularity`, `is_available()`, `profile_cls`, a scheduler hook and the
   directories it ships; one registry holds the built-ins (found by scanning the
   subpackages of `llmservingsim/platforms/`, no registration list) and every class named by an
   `llmservingsim.platforms` entry point. Built-ins register first and the first
@@ -67,10 +67,10 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
   before booting (fp8 KV on RBLN-CR03 used to fail minutes into compilation).
   `pytest tests/test_platforms.py` checks the specs and the merge.
 - `llmservingsim/platforms/` — platform plugins, the simulator's counterpart to vLLM's out-of-tree
-  platform plugins. One package per vendor with `simulator.py` (which scheduler runs)
-  and the device specs, perf bundles and cluster configs it ships, resolved by
-  `--platform`, by the `platform` key recorded in a bundle's `meta.yaml`, or by an
-  installed `llmservingsim.platforms` entry point. `cuda` is the
+  platform plugins. One package per vendor with `profile.py` (how a shot is measured,
+  whether TP is emulated on one device) and `simulator.py` (which scheduler runs),
+  resolved by `--platform`, by the `platform` key the profiler now writes to
+  `meta.yaml`, or by an installed `llmservingsim.platforms` entry point. `cuda` is the
   existing behaviour. `rbln` (Rebellions NPUs through vllm-rbln) profiles at **step
   granularity** — one wall-clock time per padded forward into `tp<N>/step.csv`, TP on
   real ranks with the collectives inside the measured time — and the trace generator

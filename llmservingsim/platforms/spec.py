@@ -23,10 +23,14 @@ Rules a platform must follow, built in or not:
 from __future__ import annotations
 
 import dataclasses
+import functools
 import inspect
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
+
+if TYPE_CHECKING:
+    from llmservingsim.platforms.profile import PlatformProfile
 
 GRANULARITIES = ("layer", "step")
 
@@ -51,6 +55,29 @@ class PlatformSpec:
         """Whether this host has the hardware. Cheap, never raises, and only
         consulted where the hardware is actually used (profiler, bench)."""
         return False
+
+    @property
+    def profile_cls(self) -> type[PlatformProfile]:
+        """The ``PlatformProfile`` subclass that drives the profiler."""
+        raise NotImplementedError(f"{type(self).__name__} does not define profile_cls")
+
+    @functools.cached_property
+    def profile(self) -> PlatformProfile:
+        """One profile instance, checked against the interface."""
+        from llmservingsim.platforms.profile import PlatformProfile
+
+        prof = self.profile_cls()
+        if not isinstance(prof, PlatformProfile):
+            raise TypeError(
+                f"platform {self.name!r}: profile_cls must be a PlatformProfile "
+                f"subclass, got {type(prof).__name__}"
+            )
+        if self.granularity == "step" and type(prof).step_grid is PlatformProfile.step_grid:
+            raise TypeError(
+                f"platform {self.name!r} is step-granularity but "
+                f"{type(prof).__name__} does not override step_grid()"
+            )
+        return prof
 
     _scheduler: type | None = None
     _scheduler_bound: bool = False

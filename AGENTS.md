@@ -38,11 +38,12 @@ LLMServingSim/
 │   │   ├── validate.sh                  # every scenario vs recorded clocks + bench/examples digests
 │   │   └── validate-baselines.txt       # the recorded values; refresh with validate.sh --update
 │   ├── platforms/                       # Platform plugins: how a vLLM hardware platform differs from CUDA
-│   │   ├── spec.py                      # PlatformSpec (name, granularity, bind_scheduler)
+│   │   ├── spec.py                      # PlatformSpec (name, granularity, profile_cls, bind_scheduler)
 │   │   │                                # and DeviceSpec (memory facts, fp8 support)
 │   │   ├── _registry.py                 # built-ins by package scan + `llmservingsim.platforms` entry points
 │   │   ├── __init__.py                  # load_platform(), load_device(), resolve_npu_mem(), resource_dirs()
-│   │   └── cuda/                        # CudaPlatform
+│   │   ├── profile.py                   # PlatformProfile: the profiler-side interface, CUDA defaults
+│   │   └── cuda/                        # CudaPlatform, profile.py (layerwise_profile)
 │   │       └── devices/                 # RTX4090.yaml, RTXPRO6000.yaml, H100.yaml
 │   ├── workloads/                       # ShareGPT/etc → JSONL workload generators
 │   │   └── generators/                  # `python -m llmservingsim.workloads.generators`
@@ -178,10 +179,12 @@ the simulator's counterpart, built the same way: one `PlatformSpec` subclass
 per platform, in tree or out, and one registry holding both.
 
 - `llmservingsim/platforms/spec.py::PlatformSpec` is the whole interface: `name`,
-  `granularity`, `is_available()`, `bind_scheduler()`,
+  `granularity`, `is_available()`, `profile_cls`, `bind_scheduler()`,
   `resource_dir` / `resources(kind)`. Defaults are CUDA vLLM's, so a
   platform overrides only what differs. Each hook has a resolved counterpart
-  the callers read: reading `spec.scheduler` runs
+  the callers read: `spec.profile` builds `profile_cls` once and refuses one
+  that is not a `PlatformProfile`, or a step-granularity platform whose
+  profile does not override `step_grid`; reading `spec.scheduler` runs
   `bind_scheduler()` once, which assigns `self.scheduler` or nothing, and
   binds the in-tree port when nothing was assigned, which is what CUDA vLLM
   does. The setter refuses anything that is not a class.
@@ -198,6 +201,16 @@ per platform, in tree or out, and one registry holding both.
   given name wins, so a plugin cannot silently replace one; a plugin that
   fails to import or fails `validate_spec` is logged and skipped. The
   entry-point name must equal the spec's `name`. Built once per process.
+- `profile.py`: the `PlatformProfile` subclass `profile_cls` returns. The
+  base holds the CUDA defaults: `ENGINE_KWARGS` merged over
+  `HOST_ENGINE_DEFAULTS` (default `{}`), `TP_EMULATION` (default `True`:
+  shrink `SHARD_FIELDS` on one GPU; `False` boots real ranks when the
+  collectives are inside the compiled graph), `scheduler_output_cls()`
+  (default vLLM's `SchedulerOutput`), `device_info()` for meta.yaml,
+  `measure(run_forward, iterations, catalog_slice)` (abstract; cuda uses
+  `layerwise_profile`) and `step_grid(args, limits)` (raises by default).
+  The base imports nothing heavy at module scope, so `platforms` still
+  loads in the simulator container.
 - `llmservingsim/platforms/spec.py::DeviceSpec` is one piece of hardware, read from a
   platform's `devices/<hardware>.yaml`. A device is **data, not behaviour**:
   a device differs from another device in its numbers, while a platform

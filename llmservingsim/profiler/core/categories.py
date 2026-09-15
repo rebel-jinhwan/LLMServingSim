@@ -23,12 +23,16 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 from llmservingsim.profiler.core.config import Architecture, LayerEntry, ProfileArgs
 from llmservingsim.profiler.core.engine import RuntimeLimits
 from llmservingsim.profiler.core.hooks.batch import Shot
 from llmservingsim.profiler.core.hooks.timings import TimingSample
+
+if TYPE_CHECKING:
+    from llmservingsim.platforms import PlatformSpec
+
 
 # ---------------------------------------------------------------------------
 # Point types — one per category, shaped by the CSV schema for that kind.
@@ -61,6 +65,18 @@ class AttentionPoint:
 
 
 @dataclass(frozen=True)
+class StepPoint:
+    """One padded forward on one pipeline stage (stage 0 when pp=1)."""
+
+    stage: int
+    prefill_chunk: int
+    kv_prefill: int
+    n_decode: int
+    kv_decode: int
+    microseconds: float
+
+
+@dataclass(frozen=True)
 class ExpertPoint:
     tokens: int
     activated_experts: int
@@ -68,7 +84,7 @@ class ExpertPoint:
 
 
 # Union alias for writer.py's benefit.
-Point = DensePoint | SequencePoint | AttentionPoint | ExpertPoint
+Point = DensePoint | SequencePoint | AttentionPoint | ExpertPoint | StepPoint
 
 
 # ---------------------------------------------------------------------------
@@ -537,10 +553,54 @@ class ExpertCategory(Category):
 # ---------------------------------------------------------------------------
 
 
-def categories_for(arch: Architecture, tp: int) -> list[Category]:
+class StepCategory(AttentionCategory):
+    """One row per padded forward for a step-granularity platform.
+
+    Same 4D key and CSV shape as attention, but the time is the whole
+    step (embedding to sampler, collectives included) and the grid is
+    the platform's: exactly the shapes its runner can produce.
+    """
+
+    name = "step"
+    sink_filename = "step.csv"
+    label = "step"
+
+    def compose_shots(self, arch, args, limits, tp):
+        from llmservingsim.platforms import load_platform
+
+        yield from load_platform(args.platform).profile.step_grid(args, limits)
+
+    def extract_points_all_ranks(self, shot, per_rank_us, tp):
+        """One StepPoint per pipeline stage from every worker's wall-clock.
+
+        The longest per-rank time is taken as the forward's latency and
+        split evenly across the stages, since vLLM's ``get_pp_indices``
+        splits the transformer blocks evenly. Known to be unreliable at
+        pp > 1: the ranks block on one another's sends and receives inside
+        the timed loop, and on MiniMax-M2.5 pp4 this gave a prefill 4x
+        longer and a decode 4x shorter than vLLM's own TTFT and TPOT (see
+        the RBLN platform's MiniMax-M2.5-pp4 example). A pp profile
+        needs the latency of one forward through the whole pipeline timed
+        from the host; until then treat pp > 1 bundles as indicative only.
+        """
+        pc, kp, nd, kd = self.shot_key(shot)
+        num_stages = max(1, len(per_rank_us) // max(1, tp))
+        total = max(per_rank_us)
+        for stage in range(num_stages):
+            yield StepPoint(stage, pc, kp, nd, kd, max(total / num_stages, 1.0))
+
+    def catalog_slice(self, arch):
+        # Nothing to match against: the platform's measure() returns a
+        # single "step" sample. Non-empty so run_slice accepts the group.
+        return {"step": {"vllm": "*"}}
+
+
+def categories_for(
+    arch: Architecture, tp: int, platform: PlatformSpec | None = None
+) -> list[Category]:
     """Return the list of categories that should run for this (arch, tp).
 
-    Excludes:
+    A step-granularity platform runs only StepCategory. Otherwise excludes:
       * Any category whose catalog slice is empty (e.g., ExpertCategory
         for a dense model).
       * ExpertCategory for tp != 1 (MoE is profiled once at tp=1;
@@ -548,6 +608,8 @@ def categories_for(arch: Architecture, tp: int) -> list[Category]:
       * Any category for which every matching layer is tp_stable AND
         tp != 1 (replicate_tp_stable will fill it in from tp=1).
     """
+    if platform is not None and platform.granularity == "step":
+        return [StepCategory()]
     result: list[Category] = []
     registry = [
         (DenseCategory(), arch.catalog.dense),
@@ -572,4 +634,5 @@ CATEGORY_BY_NAME: dict[str, type[Category]] = {
     SequenceCategory.name: SequenceCategory,
     AttentionCategory.name: AttentionCategory,
     ExpertCategory.name: ExpertCategory,
+    StepCategory.name: StepCategory,
 }

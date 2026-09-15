@@ -24,6 +24,7 @@ from typing import Any
 
 import yaml
 
+from llmservingsim.platforms import load_platform
 from llmservingsim.profiler import __version__ as profiler_version
 from llmservingsim.profiler.core import logger as log
 from llmservingsim.profiler.core.categories import (
@@ -34,6 +35,7 @@ from llmservingsim.profiler.core.config import (
     Architecture,
     ProfileArgs,
     architecture_hash,
+    mnbt_bumped,
 )
 
 # ---------------------------------------------------------------------------
@@ -234,6 +236,7 @@ _KEY_FIELDS_BY_CATEGORY: dict[str, list[str]] = {
     "per_sequence": ["layer", "sequences"],
     "attention": ["prefill_chunk", "kv_prefill", "n_decode", "kv_decode"],
     "moe": ["tokens", "activated_experts"],
+    "step": ["stage", "prefill_chunk", "kv_prefill", "n_decode", "kv_decode"],
 }
 
 
@@ -518,13 +521,15 @@ def persist_meta(
     # (see engine.fuse_engine_kwargs). Record the LOGICAL value in
     # meta.yaml so the simulator's runtime-vs-profiled bound comparison
     # and any human inspection see the user-intended cap.
+    platform = load_platform(args.platform)
     engine_effective = dict(engine_kwargs_used)
-    try:
-        engine_effective["max_num_batched_tokens"] = int(
-            engine_effective["max_num_batched_tokens"]
-        ) - int(engine_effective["max_num_seqs"])
-    except (KeyError, TypeError, ValueError):
-        pass
+    if mnbt_bumped(platform):
+        try:
+            engine_effective["max_num_batched_tokens"] = int(
+                engine_effective["max_num_batched_tokens"]
+            ) - int(engine_effective["max_num_seqs"])
+        except (KeyError, TypeError, ValueError):
+            pass
 
     # Effective sweep caps for attention: engine_effective holds the
     # logical (un-bumped) MNBT; MSQ comes from the same block or falls
@@ -541,8 +546,11 @@ def persist_meta(
     meta = {
         "profiler_version": profiler_version,
         "vllm_version": _vllm_version(),
-        "cuda_version": _cuda_version(),
-        "gpu": _gpu_name(),
+        # The simulator reads these two to pick its scheduler and trace
+        # shape, so a bundle carries its own platform.
+        "platform": platform.name,
+        "granularity": platform.granularity,
+        **platform.profile.device_info(),
         "hardware": args.hardware,
         "profiled_at": _utcnow_iso(),
         "architecture": args.architecture,
@@ -710,27 +718,6 @@ def _vllm_version() -> str:
         return getattr(vllm, "__version__", "unknown")
     except ImportError:
         return "unknown"
-
-
-def _cuda_version() -> str:
-    # torch.version.cuda is the runtime CUDA version linked into torch.
-    try:
-        import torch
-
-        return torch.version.cuda or "unknown"
-    except Exception:
-        return "unknown"
-
-
-def _gpu_name() -> str:
-    try:
-        import torch
-
-        if torch.cuda.is_available():
-            return torch.cuda.get_device_name(0)
-    except Exception:
-        pass
-    return "unknown"
 
 
 def _utcnow_iso() -> str:

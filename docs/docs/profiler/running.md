@@ -170,6 +170,8 @@ file is an error.
 | Flag | Default | `profile.sh` variable |
 | --- | --- | --- |
 | `--hardware` | **required** | `HARDWARE` |
+| `--platform` | `cuda` | — (`cuda`, or one installed through the `llmservingsim.platforms` entry-point group; see [Platforms](../simulator/platforms)) |
+| `--engine-kwargs` | none | — (JSON object of extra `vllm.LLM` kwargs merged last, for knobs without a flag: `block_size`, `max_model_len`, `enable_expert_parallel`, `num_gpu_blocks_override`) |
 | `--tp` | `1` | `TP_DEGREES` |
 | `--variant` | auto-derived from dtypes | `VARIANT` |
 | `--dtype` | vLLM default (model's `torch_dtype`) | `DTYPE` |

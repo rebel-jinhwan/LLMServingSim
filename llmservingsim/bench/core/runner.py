@@ -485,7 +485,10 @@ def _hardware_facts() -> dict:
 
             platform = detect_platform()
             if platform is not None:
+                info = platform.profile.device_info()
                 facts["platform"] = platform.name
+                facts["device_name"] = info.pop("gpu", None)
+                facts.update(info)
     except Exception as exc:
         facts["error"] = f"{type(exc).__name__}: {exc}"
     return facts
