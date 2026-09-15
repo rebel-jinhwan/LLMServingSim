@@ -33,3 +33,8 @@ exclude = ["llmservingsim.profiler.v0*"]
 
 [tool.setuptools.package-data]
 "llmservingsim.profiler" = ["models/*.yaml"]
+
+# So a bare `pytest` from the repo root collects the unit checks and nothing
+# else -- docs/ and llmservingsim/profiler/v0/ are not test trees.
+[tool.pytest.ini_options]
+testpaths = ["tests"]

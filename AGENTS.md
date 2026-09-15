@@ -83,6 +83,9 @@ LLMServingSim/
 │       ├── <hw>/<model>/validation/     # summary.txt + plots
 │       ├── run.sh                       # re-run the simulator side: run.sh <hardware>/<model>
 │       └── validate.sh                  # re-run the comparison: validate.sh <hardware>/<model>
+├── tests/                               # pytest unit checks: block pool, KV cache manager, configs
+│   ├── conftest.py                      # Puts the repo root on sys.path
+│   └── demo_logger.py                   # Not a test: prints every logger surface, for looking at
 ├── pyproject.toml                       # `pip install -e .` for the import paths (not published)
 ├── scripts/                             # Shared shell entry points (env / build, not module-specific)
 │   ├── docker-vllm.sh                   # vLLM container (profiler + bench)
@@ -692,8 +695,10 @@ website (not the README).
 
 ## Testing & Validation
 
-No unit-test suite. The simulator is deterministic, so validation is exact
-equality against recorded results:
+Unit checks live in `tests/` and run with `pytest`. They cover the parts that
+simulating does not: the block pool, the tiered KV cache manager and model
+config loading. The simulator itself is deterministic, so its validation is
+exact equality against recorded results:
 
 1. **`./llmservingsim/serving/validate.sh`** — the whole check, ~8 min. Stage 1 compares every
    scenario against the `Total clocks (ns)` recorded in
@@ -710,6 +715,12 @@ equality against recorded results:
    them in the same commit.
 3. For profiler changes: edit `MODEL` / `HARDWARE` in `llmservingsim/profiler/profile.sh`
    and run `./llmservingsim/profiler/profile.sh` from the repo root inside the vLLM container.
+4. `pytest` runs the unit checks: the block pool, the tiered KV cache manager
+   and model config loading. Plain `test_*()` functions that assert — no
+   fixtures, no base classes. `tests/conftest.py` puts the repository root on
+   `sys.path`, so no `PYTHONPATH` is needed, and
+   `.github/workflows/tests.yml` runs the same command on every push and pull
+   request. See `tests/README.md`
 
 A scenario whose clock equals an existing one exercises flag parsing and
 nothing else. Several knobs only bite once the KV cache is saturated, which is
