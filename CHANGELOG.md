@@ -5,6 +5,14 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
 
 ## [Unreleased]
 
+### Added
+- `pyproject.toml`, so `pip install -e .` puts `serving`, `platforms`,
+  `profiler`, `bench` and `workloads` on the import path. An out-of-tree
+  platform plugin and `tests/` then need no `PYTHONPATH`, and
+  `scripts/docker-sim.sh` installs the checkout the same way (with `--no-deps`,
+  since that image's versions are pinned). Not published: the package names are
+  the repository's own directories, too generic for an index.
+
 ### Changed
 - `PlatformSpec.scheduler_cls` is now the `bind_scheduler()` hook, which
   assigns `self.scheduler` and returns nothing; `spec.scheduler` is what
@@ -12,6 +20,15 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) co
   gets the in-tree port of vLLM's scheduler, which is what CUDA vLLM does;
   assigning something that is not a class is refused on the spot. A method rather than an attribute because binding may
   import the vendor's package, which must not happen until a run asks for it.
+- Every self-check moved into `tests/`, run with `python tests/run.py`: the
+  block pool, the tiered KV cache manager, model config loading, the platform
+  registry and out-of-tree discovery, and the in-tree scheduler against vLLM's
+  own. They were `__main__` blocks and `_selfcheck()` functions scattered
+  through the modules they checked (`python -m platforms`,
+  `python -m serving.core.vllm_scheduler`, ...). Plain `test_*()` functions
+  that assert, no framework and no new dependency; pytest reads the same
+  files. A check that cannot run in an environment raises `unittest.SkipTest`
+  and is reported as a skip.
 - The `rbln` platform now lives out of tree, in
   [`llmservingsim-rbln`](https://github.com/rebel-jinhwan/llmservingsim-rbln),
   which is the worked example of the platform plugin interface: it ships the

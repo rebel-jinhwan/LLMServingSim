@@ -1,4 +1,5 @@
-"""``python -m platforms``: check the registry, device specs, resources and profiles.
+"""The platform registry: device specs, the npu_mem merge, and out-of-tree
+discovery. Was ``python -m platforms``.
 
 Needs only pyyaml. Out-of-tree discovery is exercised with fake entry points,
 so no plugin has to be installed:
@@ -11,14 +12,12 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 import tempfile
 import types
 from pathlib import Path
 
 import platforms
 from platforms import _registry
-from platforms.profile import _selfcheck as profile_selfcheck
 from platforms.spec import PlatformSpec
 
 
@@ -37,7 +36,7 @@ def _reset():
     platforms.devices.cache_clear()
 
 
-def _check_builtin_devices() -> None:
+def test_builtin_devices() -> None:
     seen = []
     for name, device in platforms.devices().items():
         assert device.name == name, (name, device)
@@ -91,7 +90,7 @@ def _check_device_validation() -> None:
             raise AssertionError(f"a device spec with {needle!r} was accepted: {text!r}")
 
 
-def _check_plugins() -> None:
+def test_plugin_discovery() -> None:
     root = Path(tempfile.mkdtemp(prefix="platform_plugin_"))
     (root / "devices").mkdir()
     (root / "devices" / "EXAMPLE-D1.yaml").write_text(
@@ -195,13 +194,3 @@ def _check_plugins() -> None:
     print("ok: plugins register through entry points with their own devices/, perf/ and cluster/; "
           "misnamed, non-spec, broken and duplicate plugins are skipped with a warning; "
           "selection by name, env var, device and detection")
-
-
-def main() -> None:
-    _check_builtin_devices()
-    _check_plugins()
-    profile_selfcheck()
-
-
-if __name__ == "__main__":
-    sys.exit(main())

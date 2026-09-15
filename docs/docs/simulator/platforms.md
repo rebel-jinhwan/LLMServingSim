@@ -146,7 +146,7 @@ enough:
 pip install vllm==0.24.0 --extra-index-url https://wheels.vllm.ai/0.24.0/cpu
 ```
 
-`python -m serving.core.vllm_scheduler` runs the port and the vLLM-driven
+`python tests/run.py test_vllm_scheduler` runs the port and the vLLM-driven
 scheduler over the same ShareGPT requests with a constant step time. The
 batches are identical while nothing is preempted. Under KV pressure vLLM
 keeps block 0 of its `BlockPool` as the null block, so it has one usable
@@ -223,7 +223,7 @@ than failing.
 An installed platform's devices join the same table: `load_device` searches
 every registered platform and reports which one owns the device, which is
 how a cluster config that names only `hardware` resolves its platform.
-`python -m platforms` checks every spec it can see and the merge.
+`python tests/run.py test_platforms` checks every spec it can see and the merge.
 
 ## Writing a platform
 
